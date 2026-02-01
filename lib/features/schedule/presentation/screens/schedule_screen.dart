@@ -5,10 +5,12 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/services/share_service.dart';
 import '../../../../core/theme/app_themes.dart';
 import '../../../../core/theme/chanel_theme.dart';
 import '../../../../core/theme/chanel_typography.dart';
 import '../../../../core/theme/theme_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/schedule_model.dart';
 import '../providers/schedule_provider.dart';
 
@@ -93,6 +95,36 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
   }
 
+  Future<void> _shareSchedule() async {
+    final state = ref.read(scheduleStateProvider);
+    final authState = ref.read(authStateProvider);
+    final courses = state.selectedDayCourses;
+
+    if (courses.isEmpty) return;
+
+    final box = context.findRenderObject() as RenderBox?;
+    final shareService = ref.read(shareServiceProvider);
+
+    // Convertir les cours en format de partage
+    final coursesData = courses.map((course) {
+      return {
+        'time': '${course.startTimeFormatted} - ${course.endTimeFormatted}',
+        'subject': course.displayMatiere,
+        'room': course.salle ?? '',
+        'teacher': course.displayProf,
+      };
+    }).toList();
+
+    await shareService.shareSchedule(
+      childName: authState.selectedChild?.prenom ?? 'Élève',
+      date: state.selectedDate,
+      courses: coursesData,
+      sharePositionOrigin: box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = ref.watch(currentPaletteProvider);
@@ -111,6 +143,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             letterSpacing: 0.5,
           ),
         ),
+        trailingActions: [
+          if (state.selectedDayCourses.isNotEmpty)
+            IconButton(
+              icon: Icon(Icons.share_outlined, color: palette.textSecondary),
+              tooltip: 'Partager la journée',
+              onPressed: _shareSchedule,
+            ),
+        ],
         material: (_, __) => MaterialAppBarData(
           centerTitle: true,
           elevation: 0,

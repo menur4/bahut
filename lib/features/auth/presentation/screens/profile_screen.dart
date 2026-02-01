@@ -14,6 +14,8 @@ import '../../../../core/theme/theme_provider.dart';
 import '../../../../router/app_router.dart';
 import '../providers/auth_provider.dart';
 import '../../../grades/presentation/providers/grades_provider.dart';
+import '../../../gamification/domain/models/badge_model.dart';
+import '../../../gamification/presentation/providers/badges_provider.dart';
 
 /// Écran du profil
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -245,6 +247,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
             const SizedBox(height: ChanelTheme.spacing6),
 
+            // Section Badges
+            _BadgesPreviewSection(
+              palette: palette,
+              onTap: () => context.push(AppRoutes.badges),
+            ),
+
+            const SizedBox(height: ChanelTheme.spacing6),
+
             // Changer d'enfant
             if (authState.hasMultipleChildren) ...[
               Text(
@@ -291,7 +301,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildInitials(child, AppColorPalette palette) {
+  Widget _buildInitials(dynamic child, AppColorPalette palette) {
     final initials = '${child.prenom.isNotEmpty ? child.prenom[0] : ''}${child.nom.isNotEmpty ? child.nom[0] : ''}'.toUpperCase();
     return Center(
       child: Text(
@@ -359,6 +369,157 @@ class _SettingsCard extends StatelessWidget {
               )
             : null),
       ),
+    );
+  }
+}
+
+/// Section de prévisualisation des badges
+class _BadgesPreviewSection extends ConsumerWidget {
+  final AppColorPalette palette;
+  final VoidCallback onTap;
+
+  const _BadgesPreviewSection({
+    required this.palette,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final badgesState = ref.watch(badgesProvider);
+    final progress = badgesState.totalBadges > 0
+        ? badgesState.unlockedCount / badgesState.totalBadges
+        : 0.0;
+
+    // Récupérer les derniers badges débloqués (max 4)
+    final recentBadges = badgesState.unlockedBadges
+        .toList()
+      ..sort((a, b) => b.unlockedAt.compareTo(a.unlockedAt));
+    final displayBadges = recentBadges.take(4).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'BADGES',
+          style: ChanelTypography.labelMedium.copyWith(
+            letterSpacing: ChanelTypography.letterSpacingWider,
+            color: palette.textTertiary,
+          ),
+        ),
+        const SizedBox(height: ChanelTheme.spacing3),
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(ChanelTheme.spacing4),
+            decoration: BoxDecoration(
+              color: palette.backgroundCard,
+              borderRadius: BorderRadius.circular(ChanelTheme.radiusMd),
+              border: Border.all(color: palette.borderLight),
+            ),
+            child: Column(
+              children: [
+                // Header avec progression
+                Row(
+                  children: [
+                    const Text('🏆', style: TextStyle(fontSize: 28)),
+                    const SizedBox(width: ChanelTheme.spacing3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${badgesState.unlockedCount} / ${badgesState.totalBadges} badges',
+                            style: ChanelTypography.titleSmall.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(
+                              ChanelTheme.radiusFull,
+                            ),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 6,
+                              backgroundColor: palette.backgroundTertiary,
+                              valueColor: AlwaysStoppedAnimation(palette.primary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: ChanelTheme.spacing2),
+                    if (badgesState.unseenCount > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: palette.error,
+                          borderRadius: BorderRadius.circular(
+                            ChanelTheme.radiusFull,
+                          ),
+                        ),
+                        child: Text(
+                          '${badgesState.unseenCount} new',
+                          style: ChanelTypography.labelSmall.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.chevron_right,
+                        color: palette.textMuted,
+                      ),
+                  ],
+                ),
+
+                // Badges récents
+                if (displayBadges.isNotEmpty) ...[
+                  const SizedBox(height: ChanelTheme.spacing4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: displayBadges.map((unlockedBadge) {
+                      final badge = BadgeDefinitions.getById(unlockedBadge.badgeId);
+                      if (badge == null) return const SizedBox.shrink();
+
+                      return Container(
+                        margin: const EdgeInsets.only(right: ChanelTheme.spacing2),
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: badge.rarity.color.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: badge.rarity.color.withOpacity(0.5),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            badge.icon,
+                            style: const TextStyle(fontSize: 22),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ] else ...[
+                  const SizedBox(height: ChanelTheme.spacing3),
+                  Text(
+                    'Ajoute des notes pour débloquer tes premiers badges !',
+                    style: ChanelTypography.bodySmall.copyWith(
+                      color: palette.textTertiary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

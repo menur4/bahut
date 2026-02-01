@@ -14,7 +14,7 @@ enum QuickActionType {
   viewGrades('view_grades', 'Voir mes notes', 'assignment'),
   todayHomework('today_homework', 'Devoirs du jour', 'book'),
   viewSchedule('view_schedule', 'Emploi du temps', 'calendar_today'),
-  viewStats('view_stats', 'Statistiques', 'analytics');
+  simulator('simulator', 'Simulateur', 'calculate');
 
   final String type;
   final String title;
@@ -31,8 +31,8 @@ enum QuickActionType {
         return 'book.fill';
       case QuickActionType.viewSchedule:
         return 'calendar';
-      case QuickActionType.viewStats:
-        return 'chart.bar.fill';
+      case QuickActionType.simulator:
+        return 'function';
     }
   }
 
@@ -143,13 +143,13 @@ class QuickActionsService {
             : QuickActionType.viewSchedule.androidIcon,
       ));
 
-      // Action "Statistiques"
+      // Action "Simulateur"
       items.add(ShortcutItem(
-        type: QuickActionType.viewStats.type,
-        localizedTitle: QuickActionType.viewStats.title,
+        type: QuickActionType.simulator.type,
+        localizedTitle: QuickActionType.simulator.title,
         icon: Platform.isIOS
-            ? QuickActionType.viewStats.iOSIcon
-            : QuickActionType.viewStats.androidIcon,
+            ? QuickActionType.simulator.iOSIcon
+            : QuickActionType.simulator.androidIcon,
       ));
 
       await _quickActions.setShortcutItems(items);
@@ -178,8 +178,8 @@ class QuickActionsService {
         return '/homework';
       case QuickActionType.viewSchedule:
         return '/schedule';
-      case QuickActionType.viewStats:
-        return '/statistics';
+      case QuickActionType.simulator:
+        return '/simulation';
     }
   }
 }

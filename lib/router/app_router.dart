@@ -7,7 +7,7 @@ import '../features/auth/presentation/screens/qcm_screen.dart';
 import '../features/biometric/presentation/screens/biometric_screen.dart';
 import '../features/children/presentation/screens/child_selector_screen.dart';
 import '../features/dashboard/presentation/screens/dashboard_screen.dart';
-import '../features/grades/presentation/screens/grades_screen.dart';
+import '../features/grades/presentation/screens/grades_hub_screen.dart';
 import '../features/averages/presentation/screens/averages_screen.dart';
 import '../features/auth/presentation/screens/profile_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
@@ -16,6 +16,7 @@ import '../features/homework/presentation/screens/homework_screen.dart';
 import '../features/vie_scolaire/presentation/screens/vie_scolaire_screen.dart';
 import '../features/statistics/presentation/screens/statistics_screen.dart';
 import '../features/simulation/presentation/screens/simulation_screen.dart';
+import '../features/gamification/presentation/screens/badges_screen.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
 import '../shared/widgets/main_scaffold.dart';
 import '../shared/widgets/loading_screen.dart';
@@ -150,7 +151,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/grades',
             pageBuilder: (context, state) => const NoTransitionPage(
-              child: GradesScreen(),
+              child: GradesHubScreen(),
             ),
           ),
           GoRoute(
@@ -201,6 +202,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               child: SimulationScreen(),
             ),
           ),
+          GoRoute(
+            path: '/badges',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: BadgesScreen(),
+            ),
+          ),
         ],
       ),
     ],
@@ -224,4 +231,5 @@ class AppRoutes {
   static const String settings = '/settings';
   static const String statistics = '/statistics';
   static const String simulation = '/simulation';
+  static const String badges = '/badges';
 }

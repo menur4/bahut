@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/services/share_service.dart';
 import '../../../../core/theme/app_themes.dart';
 import '../../../../core/theme/chanel_theme.dart';
 import '../../../../core/theme/chanel_typography.dart';
@@ -171,14 +173,25 @@ class GradeCard extends StatelessWidget {
 }
 
 /// Bottom sheet affichant les détails d'une note
-class _GradeDetailSheet extends StatelessWidget {
+class _GradeDetailSheet extends ConsumerWidget {
   final GradeModel grade;
   final AppColorPalette? palette;
 
   const _GradeDetailSheet({required this.grade, this.palette});
 
+  Future<void> _shareGrade(BuildContext context, WidgetRef ref) async {
+    final box = context.findRenderObject() as RenderBox?;
+    final shareService = ref.read(shareServiceProvider);
+    await shareService.shareGrade(
+      grade,
+      sharePositionOrigin: box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null,
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final p = palette ?? AppThemes.classique;
     final valeur = grade.valeurDouble;
     final valeurSur20 = grade.valeurSur20;
@@ -191,20 +204,45 @@ class _GradeDetailSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
-          Container(
-            margin: const EdgeInsets.only(top: ChanelTheme.spacing3),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: p.borderLight,
-              borderRadius: BorderRadius.circular(2),
+          // Handle et bouton partage
+          Padding(
+            padding: const EdgeInsets.only(
+              top: ChanelTheme.spacing2,
+              right: ChanelTheme.spacing2,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const SizedBox(width: 40), // Spacer pour centrer le handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: p.borderLight,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _shareGrade(context, ref),
+                  icon: Icon(
+                    Icons.share_outlined,
+                    color: p.textSecondary,
+                    size: 20,
+                  ),
+                  tooltip: 'Partager',
+                ),
+              ],
             ),
           ),
 
           // Contenu
           Padding(
-            padding: const EdgeInsets.all(ChanelTheme.spacing6),
+            padding: const EdgeInsets.fromLTRB(
+              ChanelTheme.spacing6,
+              0,
+              ChanelTheme.spacing6,
+              ChanelTheme.spacing6,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

@@ -3,6 +3,7 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/share_service.dart';
 import '../../../../core/theme/app_themes.dart';
 import '../../../../core/theme/chanel_theme.dart';
 import '../../../../core/theme/chanel_typography.dart';
@@ -12,7 +13,41 @@ import '../../../grades/presentation/providers/grades_provider.dart';
 import '../../../grades/presentation/widgets/period_selector.dart';
 import '../../domain/services/average_calculator.dart';
 
-/// Écran des moyennes
+/// Partage le bulletin
+Future<void> _shareBulletin(
+  BuildContext context,
+  WidgetRef ref, {
+  required String childName,
+  required String periodName,
+  required double generalAverage,
+  required Map<String, SubjectAverage> subjectAverages,
+}) async {
+  final box = context.findRenderObject() as RenderBox?;
+  final shareService = ref.read(shareServiceProvider);
+
+  // Convertir les moyennes par matière
+  final averagesMap = <String, double>{};
+  final namesMap = <String, String>{};
+  for (final entry in subjectAverages.entries) {
+    if (entry.value.average != null) {
+      averagesMap[entry.key] = entry.value.average!;
+      namesMap[entry.key] = entry.value.subjectName;
+    }
+  }
+
+  await shareService.shareBulletin(
+    childName: childName,
+    periodName: periodName,
+    generalAverage: generalAverage,
+    subjectAverages: averagesMap,
+    subjectNames: namesMap,
+    sharePositionOrigin: box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null,
+  );
+}
+
+/// Écran des moyennes (standalone)
 class AveragesScreen extends ConsumerWidget {
   const AveragesScreen({super.key});
 
@@ -23,7 +58,6 @@ class AveragesScreen extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
     final selectedChild = authState.selectedChild;
 
-    // Calculer les moyennes
     final generalAverage = AverageCalculator.calculateGeneralAverage(
       gradesState.filteredGrades,
     );
@@ -40,6 +74,27 @@ class AveragesScreen extends ConsumerWidget {
             letterSpacing: ChanelTypography.letterSpacingWider,
           ),
         ),
+        trailingActions: [
+          if (generalAverage != null && subjectAverages.isNotEmpty)
+            IconButton(
+              icon: Icon(Icons.share_outlined, color: palette.textSecondary),
+              tooltip: 'Partager le bulletin',
+              onPressed: () {
+                final periodName = gradesState.periods
+                    .where((p) => p.codePeriode == gradesState.selectedPeriod)
+                    .map((p) => p.periode)
+                    .firstOrNull ?? 'Période';
+                _shareBulletin(
+                  context,
+                  ref,
+                  childName: selectedChild?.prenom ?? 'Élève',
+                  periodName: periodName,
+                  generalAverage: generalAverage!,
+                  subjectAverages: subjectAverages,
+                );
+              },
+            ),
+        ],
         material: (_, __) => MaterialAppBarData(
           centerTitle: true,
           elevation: 0,
@@ -52,7 +107,6 @@ class AveragesScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // Sélecteur de période
           if (gradesState.periods.isNotEmpty)
             Container(
               color: palette.backgroundPrimary,
@@ -69,62 +123,67 @@ class AveragesScreen extends ConsumerWidget {
                 palette: palette,
               ),
             ),
+          const Expanded(child: AveragesScreenContent()),
+        ],
+      ),
+    );
+  }
+}
 
-          // Contenu
-          Expanded(
-            child: gradesState.filteredGrades.isEmpty
-                ? Center(
-                    child: Text(
-                      'Aucune note pour cette période',
-                      style: ChanelTypography.bodyMedium.copyWith(
-                        color: palette.textSecondary,
-                      ),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(ChanelTheme.spacing4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Carte moyenne générale
-                        _GeneralAverageCard(
-                          average: generalAverage,
-                          childName: selectedChild?.prenom ?? '',
-                          palette: palette,
-                        ),
+/// Contenu de l'écran moyennes (réutilisable dans tabs)
+class AveragesScreenContent extends ConsumerWidget {
+  const AveragesScreenContent({super.key});
 
-                        const SizedBox(height: ChanelTheme.spacing4),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = ref.watch(currentPaletteProvider);
+    final gradesState = ref.watch(gradesStateProvider);
+    final authState = ref.watch(authStateProvider);
+    final selectedChild = authState.selectedChild;
 
-                        // Bouton simulateur
-                        _SimulatorButton(
-                          palette: palette,
-                          onTap: () => context.go('/simulation'),
-                        ),
+    final generalAverage = AverageCalculator.calculateGeneralAverage(
+      gradesState.filteredGrades,
+    );
+    final subjectAverages = AverageCalculator.calculateSubjectAverages(
+      gradesState.gradesBySubject,
+    );
 
-                        const SizedBox(height: ChanelTheme.spacing6),
-
-                        // Titre moyennes par matière
-                        Text(
-                          'PAR MATIÈRE',
-                          style: ChanelTypography.labelMedium.copyWith(
-                            letterSpacing: ChanelTypography.letterSpacingWider,
-                            color: palette.textTertiary,
-                          ),
-                        ),
-
-                        const SizedBox(height: ChanelTheme.spacing3),
-
-                        // Liste des moyennes par matière
-                        ...subjectAverages.entries.map((entry) {
-                          return _SubjectAverageCard(
-                            subjectAverage: entry.value,
-                            palette: palette,
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
+    if (gradesState.filteredGrades.isEmpty) {
+      return Center(
+        child: Text(
+          'Aucune note pour cette période',
+          style: ChanelTypography.bodyMedium.copyWith(
+            color: palette.textSecondary,
           ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(ChanelTheme.spacing4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _GeneralAverageCard(
+            average: generalAverage,
+            childName: selectedChild?.prenom ?? '',
+            palette: palette,
+          ),
+          const SizedBox(height: ChanelTheme.spacing6),
+          Text(
+            'PAR MATIÈRE',
+            style: ChanelTypography.labelMedium.copyWith(
+              letterSpacing: ChanelTypography.letterSpacingWider,
+              color: palette.textTertiary,
+            ),
+          ),
+          const SizedBox(height: ChanelTheme.spacing3),
+          ...subjectAverages.entries.map((entry) {
+            return _SubjectAverageCard(
+              subjectAverage: entry.value,
+              palette: palette,
+            );
+          }),
         ],
       ),
     );

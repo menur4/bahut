@@ -8,18 +8,19 @@ import '../../../../core/theme/theme_provider.dart';
 import '../../../../shared/widgets/skeleton_widgets.dart';
 import '../../../grades/presentation/providers/grades_provider.dart';
 import '../../domain/services/statistics_service.dart';
+import '../providers/goals_provider.dart';
 import '../providers/statistics_provider.dart';
 import '../widgets/charts.dart';
+import '../widgets/class_comparison_section.dart';
+import '../widgets/goal_section.dart';
 
-/// Écran des statistiques et graphiques
+/// Écran des statistiques (standalone)
 class StatisticsScreen extends ConsumerWidget {
   const StatisticsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = ref.watch(currentPaletteProvider);
-    final gradesState = ref.watch(gradesStateProvider);
-    final stats = ref.watch(globalStatsProvider);
 
     return PlatformScaffold(
       backgroundColor: palette.backgroundSecondary,
@@ -41,22 +42,47 @@ class StatisticsScreen extends ConsumerWidget {
           backgroundColor: palette.backgroundPrimary,
         ),
       ),
-      body: gradesState.isLoading && gradesState.grades.isEmpty
-          ? const _SkeletonStats()
-          : stats.totalGrades == 0
-              ? _EmptyStats(palette: palette)
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    await ref.read(gradesStateProvider.notifier).fetchGrades(forceRefresh: true);
-                  },
-                  color: palette.primary,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(ChanelTheme.spacing4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+      body: const StatisticsScreenContent(),
+    );
+  }
+}
+
+/// Contenu de l'écran statistiques (réutilisable dans tabs)
+class StatisticsScreenContent extends ConsumerWidget {
+  const StatisticsScreenContent({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = ref.watch(currentPaletteProvider);
+    final gradesState = ref.watch(gradesStateProvider);
+    final stats = ref.watch(globalStatsProvider);
+
+    if (gradesState.isLoading && gradesState.grades.isEmpty) {
+      return const _SkeletonStats();
+    }
+
+    if (stats.totalGrades == 0) {
+      return _EmptyStats(palette: palette);
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        await ref.read(gradesStateProvider.notifier).fetchGrades(forceRefresh: true);
+      },
+      color: palette.primary,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(ChanelTheme.spacing4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
                         // Résumé en haut
                         _SummarySection(stats: stats, palette: palette),
+                        const SizedBox(height: ChanelTheme.spacing6),
+
+                        // Section objectif
+                        _buildSectionTitle('Mon objectif', palette),
+                        const SizedBox(height: ChanelTheme.spacing3),
+                        GoalSection(palette: palette),
                         const SizedBox(height: ChanelTheme.spacing6),
 
                         // Évolution des moyennes
@@ -95,9 +121,18 @@ class StatisticsScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: ChanelTheme.spacing6),
 
+                        // Comparaison avec la classe
+                        _buildSectionTitle('Vs la classe', palette),
+                        const SizedBox(height: ChanelTheme.spacing3),
+                        ClassComparisonSection(
+                          stats: stats,
+                          palette: palette,
+                        ),
+                        const SizedBox(height: ChanelTheme.spacing6),
+
                         // Radar des matières
                         if (stats.subjectStats.length >= 3) ...[
-                          _buildSectionTitle('Comparaison par matière', palette),
+                          _buildSectionTitle('Vue d\'ensemble', palette),
                           const SizedBox(height: ChanelTheme.spacing3),
                           Container(
                             padding: const EdgeInsets.all(ChanelTheme.spacing4),
@@ -137,8 +172,7 @@ class StatisticsScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                ),
-    );
+                );
   }
 
   Widget _buildSectionTitle(String title, palette) {

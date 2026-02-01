@@ -190,6 +190,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       );
                     },
                   ),
+                  const Divider(height: 1, indent: 72),
+                  // Thème automatique jour/nuit
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final autoConfig = ref.watch(autoThemeConfigProvider);
+                      return _SettingsTile(
+                        icon: Icons.schedule,
+                        title: 'Thème automatique',
+                        subtitle: autoConfig.isEnabled
+                            ? 'Clair ${autoConfig.lightStartHour}h - Sombre ${autoConfig.darkStartHour}h'
+                            : 'Désactivé',
+                        onTap: () => _showAutoThemeDialog(context, ref, autoConfig, palette),
+                        palette: palette,
+                        trailing: PlatformSwitch(
+                          value: autoConfig.isEnabled,
+                          onChanged: (value) {
+                            ref.read(hapticServiceProvider).selectionClick();
+                            ref.read(autoThemeConfigProvider.notifier).setEnabled(value);
+                          },
+                          material: (_, __) => MaterialSwitchData(
+                            activeColor: palette.primary,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ], palette),
                 const SizedBox(height: ChanelTheme.spacing6),
 
@@ -848,6 +874,232 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             )),
             const SizedBox(height: ChanelTheme.spacing4),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showAutoThemeDialog(
+    BuildContext context,
+    WidgetRef ref,
+    AutoThemeConfig config,
+    AppColorPalette palette,
+  ) {
+    int lightHour = config.lightStartHour;
+    int darkHour = config.darkStartHour;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: palette.backgroundCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(ChanelTheme.radiusLg)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(ChanelTheme.spacing4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: palette.borderLight,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: ChanelTheme.spacing4),
+                Text(
+                  'Thème automatique',
+                  style: ChanelTypography.titleMedium.copyWith(
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: ChanelTheme.spacing2),
+                Text(
+                  'Le thème changera automatiquement selon l\'heure de la journée.',
+                  style: ChanelTypography.bodySmall.copyWith(
+                    color: palette.textTertiary,
+                  ),
+                ),
+                const SizedBox(height: ChanelTheme.spacing6),
+
+                // Thème clair
+                Row(
+                  children: [
+                    Icon(Icons.light_mode, color: palette.warning, size: 24),
+                    const SizedBox(width: ChanelTheme.spacing3),
+                    Expanded(
+                      child: Text(
+                        'Thème clair à partir de',
+                        style: ChanelTypography.bodyMedium.copyWith(
+                          color: palette.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ChanelTheme.spacing3,
+                        vertical: ChanelTheme.spacing2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: palette.backgroundTertiary,
+                        borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                      ),
+                      child: DropdownButton<int>(
+                        value: lightHour,
+                        underline: const SizedBox(),
+                        isDense: true,
+                        dropdownColor: palette.backgroundCard,
+                        style: ChanelTypography.bodyMedium.copyWith(
+                          color: palette.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        items: List.generate(24, (i) => i).map((hour) {
+                          return DropdownMenuItem(
+                            value: hour,
+                            child: Text('${hour.toString().padLeft(2, '0')}h'),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setModalState(() => lightHour = value);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: ChanelTheme.spacing4),
+
+                // Thème sombre
+                Row(
+                  children: [
+                    Icon(Icons.dark_mode, color: palette.primary, size: 24),
+                    const SizedBox(width: ChanelTheme.spacing3),
+                    Expanded(
+                      child: Text(
+                        'Thème sombre à partir de',
+                        style: ChanelTypography.bodyMedium.copyWith(
+                          color: palette.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ChanelTheme.spacing3,
+                        vertical: ChanelTheme.spacing2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: palette.backgroundTertiary,
+                        borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                      ),
+                      child: DropdownButton<int>(
+                        value: darkHour,
+                        underline: const SizedBox(),
+                        isDense: true,
+                        dropdownColor: palette.backgroundCard,
+                        style: ChanelTypography.bodyMedium.copyWith(
+                          color: palette.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        items: List.generate(24, (i) => i).map((hour) {
+                          return DropdownMenuItem(
+                            value: hour,
+                            child: Text('${hour.toString().padLeft(2, '0')}h'),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setModalState(() => darkHour = value);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: ChanelTheme.spacing6),
+
+                // Prévisualisation
+                Container(
+                  padding: const EdgeInsets.all(ChanelTheme.spacing3),
+                  decoration: BoxDecoration(
+                    color: palette.backgroundTertiary,
+                    borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.wb_sunny, color: palette.warning, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${lightHour.toString().padLeft(2, '0')}h',
+                        style: ChanelTypography.labelSmall.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: ChanelTheme.spacing2),
+                        child: Icon(Icons.arrow_forward, color: palette.textMuted, size: 14),
+                      ),
+                      Icon(Icons.nightlight_round, color: palette.primary, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${darkHour.toString().padLeft(2, '0')}h',
+                        style: ChanelTypography.labelSmall.copyWith(
+                          color: palette.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: ChanelTheme.spacing6),
+
+                // Boutons
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(
+                          'Annuler',
+                          style: TextStyle(color: palette.textSecondary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ChanelTheme.spacing3),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final notifier = ref.read(autoThemeConfigProvider.notifier);
+                          notifier.setLightStartHour(lightHour);
+                          notifier.setDarkStartHour(darkHour);
+                          if (!config.isEnabled) {
+                            notifier.setEnabled(true);
+                          }
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: palette.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Appliquer'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

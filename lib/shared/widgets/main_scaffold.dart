@@ -7,16 +7,26 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/theme/app_themes.dart';
+import '../../core/theme/chanel_theme.dart';
 import '../../core/theme/chanel_typography.dart';
 import '../../core/theme/theme_provider.dart';
+import '../../features/gamification/presentation/widgets/badge_celebration.dart';
 import '../../router/app_router.dart';
 
 /// Scaffold principal avec navigation bottom
 /// Conforme aux HIG Apple (icônes adaptatives, haptic feedback, accessibilité)
-class MainScaffold extends ConsumerWidget {
+class MainScaffold extends ConsumerStatefulWidget {
   final Widget child;
 
   const MainScaffold({super.key, required this.child});
+
+  @override
+  ConsumerState<MainScaffold> createState() => _MainScaffoldState();
+}
+
+class _MainScaffoldState extends ConsumerState<MainScaffold> {
+  DateTime? _lastBackPressTime;
 
   int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
@@ -53,8 +63,108 @@ class MainScaffold extends ConsumerWidget {
     }
   }
 
+  Future<bool> _onWillPop(AppColorPalette palette) async {
+    final now = DateTime.now();
+
+    // Si on est sur le dashboard, demander confirmation pour quitter
+    final location = GoRouterState.of(context).matchedLocation;
+    if (location.startsWith('/dashboard')) {
+      // Double tap rapide pour quitter (moins de 2 secondes)
+      if (_lastBackPressTime != null &&
+          now.difference(_lastBackPressTime!) < const Duration(seconds: 2)) {
+        return true; // Quitter l'app
+      }
+
+      _lastBackPressTime = now;
+
+      // Afficher la popup de confirmation
+      final shouldExit = await showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: palette.backgroundCard,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(ChanelTheme.radiusLg)),
+        ),
+        builder: (context) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(ChanelTheme.spacing4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: palette.borderLight,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: ChanelTheme.spacing4),
+
+                Icon(
+                  Icons.exit_to_app,
+                  size: 48,
+                  color: palette.primary,
+                ),
+                const SizedBox(height: ChanelTheme.spacing3),
+
+                Text(
+                  'Quitter l\'application ?',
+                  style: ChanelTypography.titleMedium.copyWith(
+                    color: palette.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: ChanelTheme.spacing2),
+
+                Text(
+                  'Appuyez à nouveau pour confirmer',
+                  style: ChanelTypography.bodySmall.copyWith(
+                    color: palette.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: ChanelTheme.spacing6),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: Text(
+                          'Annuler',
+                          style: TextStyle(color: palette.textSecondary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ChanelTheme.spacing3),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: palette.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Quitter'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      return shouldExit ?? false;
+    }
+
+    // Si on n'est pas sur le dashboard, revenir au dashboard
+    context.go(AppRoutes.dashboard);
+    return false;
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final palette = ref.watch(currentPaletteProvider);
     final selectedIndex = _calculateSelectedIndex(context);
     final isIOS = Platform.isIOS;
@@ -62,9 +172,19 @@ class MainScaffold extends ConsumerWidget {
     // Taille d'icône conforme HIG (24pt standard pour tab bar)
     const double iconSize = 24.0;
 
-    return PlatformScaffold(
-      body: child,
-      bottomNavBar: PlatformNavBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop(palette);
+        if (shouldPop && mounted) {
+          SystemNavigator.pop();
+        }
+      },
+      child: BadgeCelebrationManager(
+        child: PlatformScaffold(
+          body: widget.child,
+        bottomNavBar: PlatformNavBar(
         currentIndex: selectedIndex,
         itemChanged: (index) => _onItemTapped(context, index),
         material: (_, __) => MaterialNavBarData(
@@ -158,6 +278,8 @@ class MainScaffold extends ConsumerWidget {
             tooltip: 'Mon profil',
           ),
         ],
+      ),
+        ),
       ),
     );
   }

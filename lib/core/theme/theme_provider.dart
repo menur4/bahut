@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,9 @@ import 'app_themes.dart';
 /// Clés de stockage
 const String _themeModeKey = 'theme_mode';
 const String _appThemeTypeKey = 'app_theme_type';
+const String _autoThemeEnabledKey = 'auto_theme_enabled';
+const String _autoThemeLightStartKey = 'auto_theme_light_start';
+const String _autoThemeDarkStartKey = 'auto_theme_dark_start';
 
 /// Provider pour le mode de thème
 final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
@@ -48,6 +52,158 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   Future<void> toggleTheme() async {
     final newMode = state == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
     await setThemeMode(newMode);
+  }
+}
+
+// ============================================
+// THÈME AUTOMATIQUE BASÉ SUR L'HEURE
+// ============================================
+
+/// Configuration du thème automatique
+class AutoThemeConfig {
+  final bool isEnabled;
+  final int lightStartHour; // Heure de début mode clair (ex: 7)
+  final int darkStartHour;  // Heure de début mode sombre (ex: 20)
+
+  const AutoThemeConfig({
+    this.isEnabled = false,
+    this.lightStartHour = 7,
+    this.darkStartHour = 20,
+  });
+
+  AutoThemeConfig copyWith({
+    bool? isEnabled,
+    int? lightStartHour,
+    int? darkStartHour,
+  }) {
+    return AutoThemeConfig(
+      isEnabled: isEnabled ?? this.isEnabled,
+      lightStartHour: lightStartHour ?? this.lightStartHour,
+      darkStartHour: darkStartHour ?? this.darkStartHour,
+    );
+  }
+
+  /// Détermine si on devrait être en mode sombre selon l'heure actuelle
+  bool shouldBeDark() {
+    final now = DateTime.now();
+    final hour = now.hour;
+
+    // Si darkStartHour > lightStartHour: sombre entre darkStart et lightStart (ex: 20h-7h)
+    // Si darkStartHour < lightStartHour: sombre entre darkStart et lightStart inversé
+    if (darkStartHour > lightStartHour) {
+      return hour >= darkStartHour || hour < lightStartHour;
+    } else {
+      return hour >= darkStartHour && hour < lightStartHour;
+    }
+  }
+}
+
+/// Provider pour la configuration du thème automatique
+final autoThemeConfigProvider =
+    StateNotifierProvider<AutoThemeConfigNotifier, AutoThemeConfig>((ref) {
+  return AutoThemeConfigNotifier(ref);
+});
+
+/// Notifier pour gérer la configuration du thème automatique
+class AutoThemeConfigNotifier extends StateNotifier<AutoThemeConfig> {
+  final Ref _ref;
+  Timer? _timer;
+
+  AutoThemeConfigNotifier(this._ref) : super(const AutoThemeConfig()) {
+    _loadConfig();
+  }
+
+  Future<void> _loadConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isEnabled = prefs.getBool(_autoThemeEnabledKey) ?? false;
+      final lightStart = prefs.getInt(_autoThemeLightStartKey) ?? 7;
+      final darkStart = prefs.getInt(_autoThemeDarkStartKey) ?? 20;
+
+      state = AutoThemeConfig(
+        isEnabled: isEnabled,
+        lightStartHour: lightStart,
+        darkStartHour: darkStart,
+      );
+
+      if (isEnabled) {
+        _startAutoSwitch();
+      }
+    } catch (e) {
+      debugPrint('[THEME] Error loading auto theme config: $e');
+    }
+  }
+
+  /// Active ou désactive le thème automatique
+  Future<void> setEnabled(bool enabled) async {
+    state = state.copyWith(isEnabled: enabled);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoThemeEnabledKey, enabled);
+
+    if (enabled) {
+      _startAutoSwitch();
+      _applyAutoTheme();
+    } else {
+      _stopAutoSwitch();
+    }
+  }
+
+  /// Définit l'heure de début du mode clair
+  Future<void> setLightStartHour(int hour) async {
+    state = state.copyWith(lightStartHour: hour);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_autoThemeLightStartKey, hour);
+
+    if (state.isEnabled) {
+      _applyAutoTheme();
+    }
+  }
+
+  /// Définit l'heure de début du mode sombre
+  Future<void> setDarkStartHour(int hour) async {
+    state = state.copyWith(darkStartHour: hour);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_autoThemeDarkStartKey, hour);
+
+    if (state.isEnabled) {
+      _applyAutoTheme();
+    }
+  }
+
+  void _startAutoSwitch() {
+    _timer?.cancel();
+    // Vérifier toutes les minutes
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _applyAutoTheme();
+    });
+  }
+
+  void _stopAutoSwitch() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _applyAutoTheme() {
+    if (!state.isEnabled) return;
+
+    final shouldBeDark = state.shouldBeDark();
+    final themeNotifier = _ref.read(themeModeProvider.notifier);
+    final currentMode = _ref.read(themeModeProvider);
+
+    final targetMode = shouldBeDark ? ThemeMode.dark : ThemeMode.light;
+    if (currentMode != targetMode) {
+      themeNotifier.setThemeMode(targetMode);
+      debugPrint('[THEME] Auto-switched to ${targetMode.name} mode');
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 }
 

@@ -55,6 +55,9 @@ dependencies:
   # Charts
   fl_chart: ^1.0.0
 
+  # Share
+  share_plus: ^10.1.4
+
   # Home screen widgets
   home_widget: ^0.7.0
 

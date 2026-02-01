@@ -11,21 +11,13 @@ import '../../../grades/presentation/providers/grades_provider.dart';
 import '../../domain/models/simulated_grade.dart';
 import '../providers/simulation_provider.dart';
 
-/// Écran de simulation de notes
-class SimulationScreen extends ConsumerStatefulWidget {
+/// Écran de simulation (standalone)
+class SimulationScreen extends ConsumerWidget {
   const SimulationScreen({super.key});
 
   @override
-  ConsumerState<SimulationScreen> createState() => _SimulationScreenState();
-}
-
-class _SimulationScreenState extends ConsumerState<SimulationScreen> {
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = ref.watch(currentPaletteProvider);
-    final gradesState = ref.watch(gradesStateProvider);
-    final simulationResult = ref.watch(simulationResultProvider);
-    final simulationState = ref.watch(simulationProvider);
 
     return PlatformScaffold(
       backgroundColor: palette.backgroundSecondary,
@@ -41,30 +33,38 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
           centerTitle: true,
           elevation: 0,
           backgroundColor: palette.backgroundPrimary,
-          actions: [
-            if (simulationState.simulatedGrades.isNotEmpty)
-              IconButton(
-                icon: Icon(Icons.delete_sweep, color: palette.error),
-                onPressed: _confirmClearAll,
-                tooltip: 'Tout effacer',
-              ),
-          ],
         ),
         cupertino: (_, __) => CupertinoNavigationBarData(
           border: null,
           backgroundColor: palette.backgroundPrimary,
-          trailing: simulationState.simulatedGrades.isNotEmpty
-              ? CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: _confirmClearAll,
-                  child: Icon(Icons.delete_sweep, color: palette.error),
-                )
-              : null,
         ),
       ),
-      body: gradesState.grades.isEmpty
-          ? _EmptyState(palette: palette)
-          : SingleChildScrollView(
+      body: const SimulationScreenContent(),
+    );
+  }
+}
+
+/// Contenu de l'écran simulation (réutilisable dans tabs)
+class SimulationScreenContent extends ConsumerStatefulWidget {
+  const SimulationScreenContent({super.key});
+
+  @override
+  ConsumerState<SimulationScreenContent> createState() => _SimulationScreenContentState();
+}
+
+class _SimulationScreenContentState extends ConsumerState<SimulationScreenContent> {
+  @override
+  Widget build(BuildContext context) {
+    final palette = ref.watch(currentPaletteProvider);
+    final gradesState = ref.watch(gradesStateProvider);
+    final simulationResult = ref.watch(simulationResultProvider);
+    final simulationState = ref.watch(simulationProvider);
+
+    if (gradesState.grades.isEmpty) {
+      return _EmptyState(palette: palette);
+    }
+
+    return SingleChildScrollView(
               padding: const EdgeInsets.all(ChanelTheme.spacing4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,8 +112,7 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
                   const SizedBox(height: ChanelTheme.spacing8),
                 ],
               ),
-            ),
-    );
+            );
   }
 
   Widget _buildSectionHeader(String title, dynamic palette) {
@@ -636,20 +635,32 @@ class _AddGradeSheet extends ConsumerStatefulWidget {
 
 class _AddGradeSheetState extends ConsumerState<_AddGradeSheet> {
   String? _selectedSubject;
+  bool _isCustomSubject = false;
+  final _customSubjectController = TextEditingController();
   final _valueController = TextEditingController();
   final _maxValueController = TextEditingController(text: '20');
   final _coefController = TextEditingController(text: '1');
 
   @override
   void dispose() {
+    _customSubjectController.dispose();
     _valueController.dispose();
     _maxValueController.dispose();
     _coefController.dispose();
     super.dispose();
   }
 
+  String? get _effectiveSubject {
+    if (_isCustomSubject) {
+      final custom = _customSubjectController.text.trim();
+      return custom.isNotEmpty ? custom : null;
+    }
+    return _selectedSubject;
+  }
+
   void _submit() {
-    if (_selectedSubject == null) return;
+    final subjectName = _effectiveSubject;
+    if (subjectName == null || subjectName.isEmpty) return;
 
     final value = double.tryParse(_valueController.text.replaceAll(',', '.'));
     final maxValue = double.tryParse(_maxValueController.text.replaceAll(',', '.')) ?? 20;
@@ -662,18 +673,24 @@ class _AddGradeSheetState extends ConsumerState<_AddGradeSheet> {
       return;
     }
 
-    // Trouver le code de la matière
-    String subjectCode = _selectedSubject!;
-    final gradesState = ref.read(gradesStateProvider);
-    // Chercher dans subjectNames (codeMatiere -> nom)
-    for (final entry in gradesState.subjectNames.entries) {
-      if (entry.value == _selectedSubject) {
-        subjectCode = entry.key;
-        break;
+    // Trouver le code de la matière ou générer un code personnalisé
+    String subjectCode;
+    if (_isCustomSubject) {
+      // Générer un code unique pour la matière personnalisée
+      subjectCode = 'CUSTOM_${subjectName.toUpperCase().replaceAll(' ', '_')}';
+    } else {
+      subjectCode = subjectName;
+      final gradesState = ref.read(gradesStateProvider);
+      // Chercher dans subjectNames (codeMatiere -> nom)
+      for (final entry in gradesState.subjectNames.entries) {
+        if (entry.value == subjectName) {
+          subjectCode = entry.key;
+          break;
+        }
       }
     }
 
-    widget.onAdd(subjectCode, _selectedSubject!, value, maxValue, coef);
+    widget.onAdd(subjectCode, subjectName, value, maxValue, coef);
     Navigator.pop(context);
   }
 
@@ -721,45 +738,116 @@ class _AddGradeSheetState extends ConsumerState<_AddGradeSheet> {
               const SizedBox(height: ChanelTheme.spacing4),
 
               // Sélection matière
-              Text(
-                'Matière',
-                style: ChanelTypography.labelMedium.copyWith(
-                  color: palette.textSecondary,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Matière',
+                    style: ChanelTypography.labelMedium.copyWith(
+                      color: palette.textSecondary,
+                    ),
+                  ),
+                  // Toggle pour matière personnalisée
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isCustomSubject = !_isCustomSubject;
+                        if (!_isCustomSubject) {
+                          _customSubjectController.clear();
+                        } else {
+                          _selectedSubject = null;
+                        }
+                      });
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isCustomSubject ? Icons.list : Icons.add,
+                          size: 16,
+                          color: palette.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _isCustomSubject ? 'Choisir existante' : 'Ajouter nouvelle',
+                          style: ChanelTypography.labelSmall.copyWith(
+                            color: palette.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: ChanelTheme.spacing2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: ChanelTheme.spacing3),
-                decoration: BoxDecoration(
-                  color: palette.backgroundTertiary,
-                  borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
-                  border: Border.all(color: palette.borderLight),
-                ),
-                child: DropdownButton<String>(
-                  value: _selectedSubject,
-                  hint: Text(
-                    'Sélectionner une matière',
-                    style: TextStyle(color: palette.textMuted),
+
+              // Champ de sélection ou de saisie
+              if (_isCustomSubject)
+                // Champ texte pour matière personnalisée
+                TextField(
+                  controller: _customSubjectController,
+                  style: TextStyle(color: palette.textPrimary),
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    hintText: 'Nom de la matière',
+                    hintStyle: TextStyle(color: palette.textMuted),
+                    filled: true,
+                    fillColor: palette.backgroundTertiary,
+                    prefixIcon: Icon(
+                      Icons.edit_outlined,
+                      color: palette.textMuted,
+                      size: 20,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                      borderSide: BorderSide(color: palette.borderLight),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                      borderSide: BorderSide(color: palette.borderLight),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                      borderSide: BorderSide(color: palette.primary),
+                    ),
                   ),
-                  isExpanded: true,
-                  underline: const SizedBox(),
-                  dropdownColor: palette.backgroundCard,
-                  items: widget.subjects.map((subject) {
-                    return DropdownMenuItem(
-                      value: subject,
-                      child: Text(
-                        subject,
-                        style: TextStyle(color: palette.textPrimary),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedSubject = value;
-                    });
-                  },
+                  onChanged: (_) => setState(() {}),
+                )
+              else
+                // Dropdown pour matières existantes
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: ChanelTheme.spacing3),
+                  decoration: BoxDecoration(
+                    color: palette.backgroundTertiary,
+                    borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                    border: Border.all(color: palette.borderLight),
+                  ),
+                  child: DropdownButton<String>(
+                    value: _selectedSubject,
+                    hint: Text(
+                      'Sélectionner une matière',
+                      style: TextStyle(color: palette.textMuted),
+                    ),
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    dropdownColor: palette.backgroundCard,
+                    items: widget.subjects.map((subject) {
+                      return DropdownMenuItem(
+                        value: subject,
+                        child: Text(
+                          subject,
+                          style: TextStyle(color: palette.textPrimary),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedSubject = value;
+                      });
+                    },
+                  ),
                 ),
-              ),
               const SizedBox(height: ChanelTheme.spacing4),
 
               // Note et barème
@@ -875,7 +963,7 @@ class _AddGradeSheetState extends ConsumerState<_AddGradeSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _selectedSubject != null ? _submit : null,
+                  onPressed: _effectiveSubject != null ? _submit : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: palette.primary,
                     foregroundColor: palette.textInverse,
