@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bahut</string>
+
+    <!-- Widget descriptions -->
+    <string name="widget_average_description">Affiche votre moyenne générale</string>
+    <string name="widget_homework_description">Affiche vos prochains devoirs</string>
+    <string name="widget_schedule_description">Affiche votre emploi du temps du jour</string>
+</resources>
