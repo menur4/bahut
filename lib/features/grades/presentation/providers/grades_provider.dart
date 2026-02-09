@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/demo/demo_data.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/notification_service.dart';
@@ -65,6 +66,13 @@ class GradesState {
 
   /// Vérifie si une note est nouvelle
   bool isNewGrade(int gradeId) => newGradeIds.contains(gradeId);
+
+  /// Nom de la période sélectionnée (ex: "Trimestre 1" au lieu de "A001")
+  String? get selectedPeriodName {
+    if (selectedPeriod == null) return null;
+    final period = periods.where((p) => p.codePeriode == selectedPeriod).firstOrNull;
+    return period?.periode;
+  }
 
   /// Notes filtrées par période
   List<GradeModel> get filteredGrades {
@@ -255,6 +263,12 @@ class GradesNotifier extends StateNotifier<GradesState> {
       return;
     }
 
+    // Mode démonstration : utiliser les données fictives
+    if (authState.isDemoMode) {
+      await _loadDemoGrades();
+      return;
+    }
+
     // Vérifier si le cache est valide
     if (!forceRefresh && state.lastSync != null) {
       final cacheAge = DateTime.now().difference(state.lastSync!);
@@ -434,6 +448,42 @@ class GradesNotifier extends StateNotifier<GradesState> {
         errorMessage: 'Erreur lors de la récupération des notes',
       );
     }
+  }
+
+  /// Charger les notes de démonstration
+  Future<void> _loadDemoGrades() async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    // Simuler un léger délai réseau pour plus de réalisme
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final grades = DemoData.demoGrades;
+    final periods = DemoData.demoPeriods;
+
+    // Convertir les infos de matières démo en SubjectInfo
+    final subjectInfos = DemoData.demoSubjectInfos.map(
+      (code, info) => MapEntry(
+        code,
+        SubjectInfo(
+          name: info['name'] as String,
+          teacher: info['teacher'] as String?,
+          classAverage: (info['classAverage'] as num?)?.toDouble(),
+        ),
+      ),
+    );
+
+    // Sélectionner la période en cours
+    final currentPeriod = _findCurrentPeriod(periods);
+
+    state = state.copyWith(
+      isLoading: false,
+      grades: grades,
+      periods: periods,
+      selectedPeriod: currentPeriod?.codePeriode ?? periods.first.codePeriode,
+      lastSync: DateTime.now(),
+      newGradeIds: const {},
+      subjectInfos: subjectInfos,
+    );
   }
 
   /// Sauvegarder les notes dans le cache

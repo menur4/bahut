@@ -5,6 +5,7 @@ import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/services/background_sync_service.dart';
 import '../../../../core/services/haptic_service.dart';
@@ -30,6 +31,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = false;
   bool _canUseBiometrics = false;
   bool _isLoading = true;
+  String _appVersion = '';
 
   @override
   void initState() {
@@ -49,9 +51,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       canUseBio = canCheck && isSupported;
     } catch (_) {}
 
+    // Charger la version de l'application
+    final packageInfo = await PackageInfo.fromPlatform();
+
     setState(() {
       _notificationsEnabled = enabled;
       _canUseBiometrics = canUseBio;
+      _appVersion = 'v${packageInfo.version}';
       _isLoading = false;
     });
   }
@@ -309,7 +315,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 // Version
                 Center(
                   child: Text(
-                    'Version 1.0.0',
+                    'Bahut $_appVersion',
                     style: ChanelTypography.labelSmall.copyWith(
                       color: palette.textMuted,
                     ),
@@ -415,18 +421,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _SettingsTile(
                   icon: Icons.calendar_month,
                   title: 'Synchroniser le calendrier',
-                  subtitle: 'Ajouter les événements au calendrier',
+                  subtitle: calendarState.isLoadingCalendars
+                      ? 'Chargement des calendriers...'
+                      : 'Ajouter les événements au calendrier',
                   palette: palette,
-                  trailing: PlatformSwitch(
-                    value: calendarState.isEnabled,
-                    onChanged: (value) {
-                      calendarNotifier.toggleSync(value);
-                      syncNotifier.setSyncCalendar(value);
-                    },
-                    material: (_, __) => MaterialSwitchData(
-                      activeColor: palette.primary,
-                    ),
-                  ),
+                  trailing: calendarState.isLoadingCalendars
+                      ? SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: palette.primary,
+                          ),
+                        )
+                      : PlatformSwitch(
+                          value: calendarState.isEnabled,
+                          onChanged: (value) {
+                            calendarNotifier.toggleSync(value);
+                            syncNotifier.setSyncCalendar(value);
+                          },
+                          material: (_, __) => MaterialSwitchData(
+                            activeColor: palette.primary,
+                          ),
+                        ),
                 ),
               ], palette),
 

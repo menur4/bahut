@@ -128,10 +128,20 @@ class StatisticsService {
       );
     }
 
-    // Grouper par matière
-    final bySubject = <String, List<GradeModel>>{};
+    // Grouper par matière principale (codeMatiere) pour cohérence avec l'onglet Notes
+    // D'abord grouper par code
+    final byCode = <String, List<GradeModel>>{};
     for (final grade in grades) {
-      bySubject.putIfAbsent(grade.libelleMatiere, () => []).add(grade);
+      byCode.putIfAbsent(grade.codeMatiere, () => []).add(grade);
+    }
+
+    // Puis convertir en map avec le nom de la matière principale
+    final bySubject = <String, List<GradeModel>>{};
+    for (final entry in byCode.entries) {
+      final gradesList = entry.value;
+      // Utiliser mainSubjectName qui retourne le nom de la matière principale
+      final subjectName = gradesList.first.mainSubjectName;
+      bySubject[subjectName] = gradesList;
     }
 
     // Calculer stats par matière

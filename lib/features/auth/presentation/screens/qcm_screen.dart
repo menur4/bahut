@@ -7,6 +7,7 @@ import '../../../../core/theme/chanel_theme.dart';
 import '../../../../core/theme/chanel_typography.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../router/app_router.dart';
+import '../../../../shared/widgets/loading_screen.dart';
 import '../providers/auth_provider.dart';
 
 /// Écran de vérification QCM pour le MFA
@@ -19,6 +20,7 @@ class QcmScreen extends ConsumerStatefulWidget {
 
 class _QcmScreenState extends ConsumerState<QcmScreen> {
   String? _selectedAnswer;
+  bool _isTransitioning = false;
 
   Future<void> _submitAnswer([String? answer]) async {
     final answerToSubmit = answer ?? _selectedAnswer;
@@ -29,10 +31,18 @@ class _QcmScreenState extends ConsumerState<QcmScreen> {
     if (mounted) {
       final authState = ref.read(authStateProvider);
       if (authState.isAuthenticated) {
-        if (authState.hasMultipleChildren && authState.selectedChildId == null) {
-          context.go(AppRoutes.children);
-        } else {
-          context.go(AppRoutes.dashboard);
+        // Afficher l'écran de chargement AVANT la navigation
+        setState(() => _isTransitioning = true);
+
+        // Petit délai pour s'assurer que l'écran de chargement est affiché
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        if (mounted) {
+          if (authState.hasMultipleChildren && authState.selectedChildId == null) {
+            context.go(AppRoutes.children);
+          } else {
+            context.go(AppRoutes.dashboard);
+          }
         }
       }
     }
@@ -48,6 +58,13 @@ class _QcmScreenState extends ConsumerState<QcmScreen> {
     final authState = ref.watch(authStateProvider);
     final qcmData = authState.qcmData;
     final palette = ref.watch(currentPaletteProvider);
+
+    // Afficher l'écran de chargement pendant la transition vers le dashboard
+    if (_isTransitioning) {
+      return const LoadingScreen(
+        message: 'Chargement de vos données...',
+      );
+    }
 
     if (qcmData == null) {
       // Redirect to login if no QCM data

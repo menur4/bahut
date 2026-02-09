@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/demo/demo_data.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/models/user_model.dart';
@@ -27,6 +28,15 @@ class AuthState {
   /// Données du QCM à afficher
   final QcmData? qcmData;
 
+  /// Indique si l'app est en mode démonstration (Play Store)
+  final bool isDemoMode;
+
+  /// Indique si on charge les données après authentification
+  final bool isPostAuthLoading;
+
+  /// Indique si la biométrie a été vérifiée pour cette session
+  final bool biometricVerified;
+
   const AuthState({
     this.isAuthenticated = false,
     this.isLoading = false,
@@ -38,9 +48,13 @@ class AuthState {
     this.errorMessage,
     this.mfaRequired = false,
     this.qcmData,
+    this.isDemoMode = false,
+    this.isPostAuthLoading = false,
+    this.biometricVerified = false,
   });
 
   /// Indique si l'app est en cours de chargement (init ou opération)
+  /// Note: isPostAuthLoading n'est pas inclus car le dashboard gère son propre loader
   bool get isProcessing => isInitializing || isLoading;
 
   bool get hasMultipleChildren => children.length > 1;
@@ -61,6 +75,9 @@ class AuthState {
     String? errorMessage,
     bool? mfaRequired,
     QcmData? qcmData,
+    bool? isDemoMode,
+    bool? isPostAuthLoading,
+    bool? biometricVerified,
   }) {
     return AuthState(
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -73,6 +90,9 @@ class AuthState {
       errorMessage: errorMessage,
       mfaRequired: mfaRequired ?? this.mfaRequired,
       qcmData: qcmData,
+      isDemoMode: isDemoMode ?? this.isDemoMode,
+      isPostAuthLoading: isPostAuthLoading ?? this.isPostAuthLoading,
+      biometricVerified: biometricVerified ?? this.biometricVerified,
     );
   }
 }
@@ -133,12 +153,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
         print('[AUTH] Token restauré dans ApiClient');
       }
 
+      final isAuthenticated = token != null && token.isNotEmpty;
       state = state.copyWith(
-        isAuthenticated: token != null && token.isNotEmpty,
+        isAuthenticated: isAuthenticated,
         biometricEnabled: biometricEnabled,
         selectedChildId: selectedChildId != null ? int.tryParse(selectedChildId) : null,
         children: children,
         isInitializing: false,
+        // Si déjà authentifié au démarrage, activer le chargement post-auth
+        // pour que le dashboard affiche un loading pendant le chargement des données
+        isPostAuthLoading: isAuthenticated,
       );
     } catch (e) {
       // En cas d'erreur, marquer comme initialisé pour permettre la navigation
@@ -150,6 +174,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Se connecter avec identifiants
   Future<void> login(String username, String password) async {
     state = state.copyWith(isLoading: true, errorMessage: null, mfaRequired: false, qcmData: null);
+
+    // Vérifier si c'est un login démo (Play Store)
+    if (DemoCredentials.isDemo(username, password)) {
+      print('[AUTH] Mode démonstration activé');
+      await _handleDemoLogin();
+      return;
+    }
 
     try {
       final apiClient = _ref.read(apiClientProvider);
@@ -209,6 +240,45 @@ class AuthNotifier extends StateNotifier<AuthState> {
         errorMessage: 'Une erreur est survenue: ${e.toString()}',
       );
     }
+  }
+
+  /// Gère la connexion en mode démonstration
+  Future<void> _handleDemoLogin() async {
+    final user = DemoData.demoUser;
+    final child = DemoData.demoChild;
+    final children = [child];
+
+    // Sauvegarder le token démo
+    await _secureStorage.write(
+      key: AppConstants.secureStorageToken,
+      value: 'demo_token',
+    );
+    await _secureStorage.write(
+      key: AppConstants.secureStorageCredentials,
+      value: jsonEncode({
+        'username': DemoCredentials.username,
+        'password': DemoCredentials.password,
+      }),
+    );
+
+    // Sauvegarder les enfants dans le cache
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      AppConstants.prefChildrenCache,
+      jsonEncode(children.map((e) => e.toJson()).toList()),
+    );
+
+    state = state.copyWith(
+      isAuthenticated: true,
+      isLoading: false,
+      user: user,
+      children: children,
+      selectedChildId: child.id,
+      isDemoMode: true,
+      mfaRequired: false,
+      qcmData: null,
+      isPostAuthLoading: true, // Activer le chargement post-auth
+    );
   }
 
   /// Décoder une chaîne base64
@@ -488,6 +558,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       selectedChildId: selectedChildId,
       mfaRequired: false,
       qcmData: null,
+      isPostAuthLoading: true, // Activer le chargement post-auth
     );
   }
 
@@ -507,17 +578,32 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(biometricEnabled: enabled);
   }
 
+  /// Marquer la biométrie comme vérifiée pour cette session
+  void completeBiometricVerification() {
+    state = state.copyWith(biometricVerified: true);
+  }
+
+  /// Marquer le chargement post-authentification comme terminé
+  void completePostAuthLoading() {
+    if (state.isPostAuthLoading) {
+      state = state.copyWith(isPostAuthLoading: false);
+    }
+  }
+
   /// Se déconnecter
   Future<void> logout() async {
-    final apiClient = _ref.read(apiClientProvider);
-    await apiClient.clearSession();
+    // Ne pas appeler l'API en mode démo
+    if (!state.isDemoMode) {
+      final apiClient = _ref.read(apiClientProvider);
+      await apiClient.clearSession();
+    }
 
     await _secureStorage.deleteAll();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.prefChildrenCache);
     await prefs.remove(AppConstants.prefGradesCache);
 
-    state = const AuthState();
+    state = const AuthState(isInitializing: false);
   }
 
   /// Rafraîchir le token avec les credentials sauvegardés

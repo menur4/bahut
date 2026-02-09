@@ -101,6 +101,53 @@ class CalendarService {
     }
   }
 
+  /// Récupère les calendriers sans vérifier les permissions
+  /// Utile juste après avoir obtenu les permissions (le système peut ne pas encore les détecter)
+  Future<List<Calendar>> getAvailableCalendarsForced() async {
+    try {
+      debugPrint('[CALENDAR] getAvailableCalendarsForced called');
+
+      // Essayer plusieurs fois avec délai (bug Android où les calendriers sont vides au début)
+      List<Calendar> writableCalendars = [];
+      for (int attempt = 0; attempt < 8; attempt++) {
+        if (attempt > 0) {
+          debugPrint('[CALENDAR] Retry attempt $attempt after delay...');
+          await Future.delayed(Duration(milliseconds: 400 * attempt));
+        }
+
+        final result = await _calendarPlugin.retrieveCalendars();
+        debugPrint('[CALENDAR] retrieveCalendars isSuccess: ${result.isSuccess}');
+        debugPrint('[CALENDAR] retrieveCalendars data: ${result.data?.length ?? 0} calendars');
+
+        if (result.isSuccess && result.data != null) {
+          // Log tous les calendriers trouvés
+          for (final cal in result.data!) {
+            debugPrint('[CALENDAR] Found: ${cal.name} (id: ${cal.id}, isReadOnly: ${cal.isReadOnly})');
+          }
+
+          // Filtrer les calendriers:
+          // 1. Doit avoir un id non null (requis pour fonctionner)
+          // 2. Doit être en écriture (isReadOnly != true)
+          writableCalendars = result.data!
+              .where((cal) => cal.id != null && cal.id!.isNotEmpty && cal.isReadOnly != true)
+              .toList();
+
+          debugPrint('[CALENDAR] Writable calendars with valid id: ${writableCalendars.length}');
+
+          // Si on a trouvé des calendriers valides, arrêter les retries
+          if (writableCalendars.isNotEmpty) {
+            break;
+          }
+        }
+      }
+
+      return writableCalendars;
+    } catch (e) {
+      debugPrint('[CALENDAR] Error getting calendars forced: $e');
+      return [];
+    }
+  }
+
   /// Trouve ou crée le calendrier Bahut
   Future<String?> getOrCreateBahutCalendar() async {
     try {

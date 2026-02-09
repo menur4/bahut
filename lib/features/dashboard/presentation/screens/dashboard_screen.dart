@@ -9,9 +9,11 @@ import '../../../../core/theme/chanel_theme.dart';
 import '../../../../core/theme/chanel_typography.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../shared/widgets/flip_card.dart';
+import '../../../../shared/widgets/loading_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../grades/data/models/grade_model.dart';
 import '../../../grades/presentation/providers/grades_provider.dart';
+import '../../../statistics/presentation/providers/goals_provider.dart';
 import '../../../homework/presentation/providers/homework_provider.dart';
 import '../../../schedule/presentation/providers/schedule_provider.dart';
 import '../../../vie_scolaire/presentation/providers/vie_scolaire_provider.dart';
@@ -26,14 +28,46 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _isRefreshing = false;
+  bool _initialLoadComplete = false;
 
   @override
   void initState() {
     super.initState();
-    // Charger les données au démarrage
+    // Déclencher le chargement immédiatement après le premier frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
+      _startLoading();
     });
+  }
+
+  /// Démarre le chargement des données
+  void _startLoading() {
+    final gradesState = ref.read(gradesStateProvider);
+    final hasCache = gradesState.grades.isNotEmpty || gradesState.lastSync != null;
+
+    if (hasCache) {
+      // Données en cache disponibles - afficher immédiatement
+      setState(() => _initialLoadComplete = true);
+      ref.read(authStateProvider.notifier).completePostAuthLoading();
+      // Rafraîchir en arrière-plan
+      _refreshInBackground();
+    } else {
+      // Pas de cache - charger depuis l'API
+      _loadData();
+    }
+  }
+
+  /// Rafraîchit les données en arrière-plan sans bloquer l'UI
+  Future<void> _refreshInBackground() async {
+    try {
+      await Future.wait<void>([
+        ref.read(gradesStateProvider.notifier).fetchGrades(),
+        ref.read(homeworkStateProvider.notifier).fetchHomework(),
+        ref.read(scheduleStateProvider.notifier).fetchSchedule(),
+        ref.read(vieScolaireStateProvider.notifier).fetchVieScolaire(),
+      ]);
+    } catch (_) {
+      // Ignorer les erreurs de rafraîchissement en arrière-plan
+    }
   }
 
   Future<void> _loadData() async {
@@ -49,7 +83,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ]);
     } finally {
       if (mounted) {
-        setState(() => _isRefreshing = false);
+        setState(() {
+          _isRefreshing = false;
+          _initialLoadComplete = true;
+        });
+        ref.read(authStateProvider.notifier).completePostAuthLoading();
       }
     }
   }
@@ -63,6 +101,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final scheduleState = ref.watch(scheduleStateProvider);
     final vieScolaireState = ref.watch(vieScolaireStateProvider);
 
+    // Afficher le loading pendant le chargement initial
+    // On reste sur le loading tant que:
+    // 1. isPostAuthLoading est actif (vient du login)
+    // 2. OU le chargement initial n'est pas terminé
+    if (authState.isPostAuthLoading || !_initialLoadComplete) {
+      return const LoadingScreen(
+        message: 'Chargement de vos données...',
+      );
+    }
+
     // Prénom de l'élève
     final childName = authState.children
             .where((c) => c.id == authState.selectedChildId)
@@ -70,9 +118,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ?.prenom ??
         'Élève';
 
-    // Moyenne générale
+    // Moyenne générale et objectif (synchronisé avec la section Stats)
     final average = gradesState.generalAverage;
     final averageStr = average != null ? average.toStringAsFixed(2) : '--';
+    final goalsState = ref.watch(goalsProvider);
+    final goal = goalsState.generalGoal?.targetAverage;
+
+    // Nom de la période (ex: "Trimestre 1" au lieu de "A001")
+    final periodName = gradesState.selectedPeriodName ?? gradesState.selectedPeriod;
 
     // Nouvelles notes
     final newGradesCount = gradesState.newGradeIds.length;
@@ -171,21 +224,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             children: [
               // Carte principale avec moyenne - FLIP CARD
               SizedBox(
-                height: 180,
-                child: FlipSummaryCard(
-                  icon: Icons.school,
-                  title: 'Moyenne générale',
-                  mainValue: averageStr,
-                  subtitle: gradesState.selectedPeriod != null
-                      ? 'Période: ${gradesState.selectedPeriod}'
-                      : 'Toutes périodes',
-                  accentColor: average != null
-                      ? palette.gradeColor(average)
-                      : palette.primary,
-                  flipHint: 'Appuyez pour voir les détails',
-                  backContent: _buildAverageDetails(gradesState, palette),
-                  backTitle: 'Détails par matière',
+                height: 200,
+                child: _AverageCard(
+                  average: average,
+                  averageStr: averageStr,
+                  periodName: periodName,
+                  goal: goal,
                   palette: palette,
+                  gradesState: gradesState,
+                  onSetGoal: () => _showGoalDialog(context, ref, goal, palette),
                 ),
               ),
 
@@ -246,6 +293,92 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showGoalDialog(BuildContext context, WidgetRef ref, double? currentGoal, AppColorPalette palette) {
+    final controller = TextEditingController(
+      text: currentGoal?.toStringAsFixed(1) ?? '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: palette.backgroundCard,
+        title: Text(
+          'Objectif de moyenne',
+          style: TextStyle(color: palette.textPrimary),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Définissez votre objectif de moyenne générale (entre 0 et 20)',
+              style: TextStyle(
+                color: palette.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: ChanelTheme.spacing4),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                hintText: 'Ex: 14.5',
+                suffixText: '/ 20',
+                filled: true,
+                fillColor: palette.backgroundTertiary,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(ChanelTheme.radiusMd),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: palette.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          if (currentGoal != null)
+            TextButton(
+              onPressed: () {
+                ref.read(goalsProvider.notifier).removeGeneralGoal();
+                Navigator.pop(context);
+              },
+              child: Text(
+                'Supprimer',
+                style: TextStyle(color: palette.error),
+              ),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Annuler',
+              style: TextStyle(color: palette.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = controller.text.replaceAll(',', '.');
+              final value = double.tryParse(text);
+              if (value != null && value > 0 && value <= 20) {
+                ref.read(goalsProvider.notifier).setGeneralGoal(value);
+              }
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: palette.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Valider'),
+          ),
+        ],
       ),
     );
   }
@@ -443,8 +576,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _buildRecentGrades(GradesState gradesState, AppColorPalette palette) {
-    // Prendre les 5 dernières notes
-    final recentGrades = gradesState.grades.take(5).toList();
+    // Trier les notes par date de saisie décroissante (quand elles sont apparues)
+    // pour afficher les notes les plus récemment ajoutées
+    final sortedGrades = List<GradeModel>.from(gradesState.grades)
+      ..sort((a, b) {
+        // Utiliser dateSaisie en priorité, sinon date de l'examen
+        final dateA = a.dateSaisieTime ?? a.dateTime ?? DateTime(1900);
+        final dateB = b.dateSaisieTime ?? b.dateTime ?? DateTime(1900);
+        return dateB.compareTo(dateA); // Plus récentes en premier
+      });
+    final recentGrades = sortedGrades.take(5).toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -710,6 +851,235 @@ class DashboardStatCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Carte de moyenne avec objectif
+class _AverageCard extends StatelessWidget {
+  final double? average;
+  final String averageStr;
+  final String? periodName;
+  final double? goal;
+  final AppColorPalette palette;
+  final GradesState gradesState;
+  final VoidCallback onSetGoal;
+
+  const _AverageCard({
+    required this.average,
+    required this.averageStr,
+    required this.periodName,
+    required this.goal,
+    required this.palette,
+    required this.gradesState,
+    required this.onSetGoal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = average != null ? palette.gradeColor(average!) : palette.primary;
+
+    // Calcul de la progression vers l'objectif
+    double? progress;
+    String? progressText;
+    Color? progressColor;
+
+    if (goal != null && average != null) {
+      progress = (average! / goal!).clamp(0.0, 1.0);
+      final diff = average! - goal!;
+      if (diff >= 0) {
+        progressText = '+${diff.toStringAsFixed(2)} pts';
+        progressColor = palette.success;
+      } else {
+        progressText = '${diff.toStringAsFixed(2)} pts';
+        progressColor = palette.error;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(ChanelTheme.spacing4),
+      decoration: BoxDecoration(
+        color: palette.backgroundCard,
+        borderRadius: BorderRadius.circular(ChanelTheme.radiusLg),
+        border: Border.all(color: palette.borderLight),
+        boxShadow: [
+          BoxShadow(
+            color: palette.textPrimary.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                ),
+                child: Icon(Icons.school, color: color, size: 20),
+              ),
+              const SizedBox(width: ChanelTheme.spacing3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'MOYENNE GÉNÉRALE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: palette.textTertiary,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    if (periodName != null)
+                      Text(
+                        periodName!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: palette.textMuted,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Bouton objectif
+              GestureDetector(
+                onTap: onSetGoal,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ChanelTheme.spacing2,
+                    vertical: ChanelTheme.spacing1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: goal != null
+                        ? palette.primary.withValues(alpha: 0.1)
+                        : palette.backgroundTertiary,
+                    borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                    border: Border.all(
+                      color: goal != null
+                          ? palette.primary.withValues(alpha: 0.3)
+                          : palette.borderLight,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.flag,
+                        size: 14,
+                        color: goal != null ? palette.primary : palette.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        goal != null ? '${goal!.toStringAsFixed(1)}' : 'Objectif',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: goal != null ? palette.primary : palette.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const Spacer(),
+
+          // Moyenne et progression
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // Moyenne
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    averageStr,
+                    style: TextStyle(
+                      fontSize: 42,
+                      fontWeight: FontWeight.w700,
+                      color: palette.textPrimary,
+                      letterSpacing: -1,
+                      height: 1,
+                    ),
+                  ),
+                  Text(
+                    '/ 20',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: palette.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+
+              const Spacer(),
+
+              // Indicateur objectif
+              if (goal != null && average != null) ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      progressText!,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: progressColor,
+                      ),
+                    ),
+                    Text(
+                      'vs objectif ${goal!.toStringAsFixed(1)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: palette.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ] else if (goal == null) ...[
+                GestureDetector(
+                  onTap: onSetGoal,
+                  child: Text(
+                    'Définir un objectif',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: palette.primary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+
+          // Barre de progression si objectif défini
+          if (goal != null && average != null) ...[
+            const SizedBox(height: ChanelTheme.spacing3),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(ChanelTheme.radiusFull),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: palette.backgroundTertiary,
+                valueColor: AlwaysStoppedAnimation(
+                  average! >= goal! ? palette.success : palette.primary,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

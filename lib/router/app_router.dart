@@ -54,7 +54,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return '/qcm';
         }
         if (isLoggedIn) {
-          if (authState.biometricEnabled) {
+          if (authState.biometricEnabled && !authState.biometricVerified) {
             return '/biometric';
           }
           if (authState.hasMultipleChildren && authState.selectedChildId == null) {
@@ -72,9 +72,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Si connecté (après login ou QCM réussi)
       if (isLoggedIn) {
-        // Si sur login, rediriger vers biometric si activé
+        // Si sur login, rediriger vers biometric si activé et pas encore vérifié
         if (isLoggingIn) {
-          if (authState.biometricEnabled && !isOnBiometric) {
+          if (authState.biometricEnabled && !authState.biometricVerified) {
             return '/biometric';
           }
           if (authState.hasMultipleChildren && authState.selectedChildId == null) {

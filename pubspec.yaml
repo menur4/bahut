@@ -1,7 +1,7 @@
 name: calcul_moyenne
 description: "Application de visualisation des notes scolaires via École Directe"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.2.0+5
 
 environment:
   sdk: ^3.10.7
@@ -66,6 +66,7 @@ dependencies:
 
   # Spotlight search (iOS)
   flutter_core_spotlight: ^1.0.0
+  package_info_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +87,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icone.png
 
 flutter_launcher_icons:
   android: true

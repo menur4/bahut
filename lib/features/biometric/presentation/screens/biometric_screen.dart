@@ -90,6 +90,8 @@ class _BiometricScreenState extends ConsumerState<BiometricScreen> {
   }
 
   void _navigateToNext() {
+    // Marquer la biométrie comme vérifiée pour éviter une double demande
+    ref.read(authStateProvider.notifier).completeBiometricVerification();
     final authState = ref.read(authStateProvider);
     if (authState.hasMultipleChildren && authState.selectedChildId == null) {
       context.go(AppRoutes.children);

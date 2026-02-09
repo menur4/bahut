@@ -39,6 +39,9 @@ class AppConstants {
   static const String prefGradesNotifyEnabled = 'grades_notify_enabled';
   static const String prefLastKnownGradeIds = 'last_known_grade_ids';
 
+  /// Clé pour l'objectif de moyenne
+  static const String prefAverageGoal = 'average_goal';
+
   /// Durée de validité du cache (en heures)
   static const int cacheValidityHours = 24;
 }

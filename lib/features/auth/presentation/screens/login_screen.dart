@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../../core/theme/chanel_theme.dart';
 import '../../../../core/theme/chanel_typography.dart';
 import '../../../../core/theme/theme_provider.dart';
-import '../../../../router/app_router.dart';
 import '../providers/auth_provider.dart';
 
 /// Écran de connexion École Directe
@@ -39,16 +36,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _passwordController.text,
     );
 
-    if (mounted) {
-      final authState = ref.read(authStateProvider);
-      if (authState.isAuthenticated) {
-        if (authState.hasMultipleChildren && authState.selectedChildId == null) {
-          context.go(AppRoutes.children);
-        } else {
-          context.go(AppRoutes.dashboard);
-        }
-      }
-    }
+    // La navigation est gérée automatiquement par le router
+    // qui redirige vers biometric, children ou dashboard selon l'état
   }
 
   @override
@@ -66,27 +55,89 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: ChanelTheme.spacing16),
+                const SizedBox(height: ChanelTheme.spacing8),
 
-                // Logo / Titre
+                // Logo
+                Center(
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(ChanelTheme.radiusXl),
+                      boxShadow: [
+                        BoxShadow(
+                          color: palette.textPrimary.withValues(alpha: 0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(ChanelTheme.radiusXl),
+                      child: Image.asset(
+                        'assets/icone.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: ChanelTheme.spacing5),
+
+                // Titre
                 Text(
                   'BAHUT',
                   textAlign: TextAlign.center,
-                  style: ChanelTypography.displaySmall.copyWith(
+                  style: ChanelTypography.displayLarge.copyWith(
                     letterSpacing: ChanelTypography.letterSpacingLuxury,
                     color: palette.textPrimary,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
-                const SizedBox(height: ChanelTheme.spacing2),
+                const SizedBox(height: ChanelTheme.spacing1),
                 Text(
-                  'Connexion École Directe',
+                  'Votre compagnon pour École Directe',
                   textAlign: TextAlign.center,
                   style: ChanelTypography.bodyMedium.copyWith(
                     color: palette.textTertiary,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
 
-                const SizedBox(height: ChanelTheme.spacing12),
+                const SizedBox(height: ChanelTheme.spacing6),
+
+                // Note explicative
+                Container(
+                  padding: const EdgeInsets.all(ChanelTheme.spacing4),
+                  decoration: BoxDecoration(
+                    color: palette.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(ChanelTheme.radiusMd),
+                    border: Border.all(
+                      color: palette.primary.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: palette.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: ChanelTheme.spacing3),
+                      Expanded(
+                        child: Text(
+                          'Connectez-vous avec vos identifiants École Directe',
+                          style: ChanelTypography.bodySmall.copyWith(
+                            color: palette.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: ChanelTheme.spacing6),
 
                 // Champ Identifiant
                 PlatformTextFormField(

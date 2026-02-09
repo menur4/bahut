@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/theme/app_themes.dart';
@@ -29,10 +30,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Uint8List? _photoBytes;
   bool _photoLoading = false;
   String? _lastPhotoUrl;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPhoto();
 
@@ -48,6 +51,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         },
       );
     });
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = 'v${packageInfo.version}';
+      });
+    }
   }
 
   Future<void> _loadPhoto() async {
@@ -289,7 +301,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
             // Version
             Text(
-              'Bahut v1.0.0',
+              'Bahut $_appVersion',
               textAlign: TextAlign.center,
               style: ChanelTypography.labelSmall.copyWith(
                 color: palette.textMuted,

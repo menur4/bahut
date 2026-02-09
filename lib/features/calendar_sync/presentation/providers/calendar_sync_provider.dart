@@ -21,6 +21,7 @@ class CalendarSyncState {
   final String? selectedCalendarName;
   final DateTime? lastSyncTime;
   final bool isSyncing;
+  final bool isLoadingCalendars;
   final String? errorMessage;
   final List<Calendar> availableCalendars;
   final bool hasPermission;
@@ -36,6 +37,7 @@ class CalendarSyncState {
     this.selectedCalendarName,
     this.lastSyncTime,
     this.isSyncing = false,
+    this.isLoadingCalendars = false,
     this.errorMessage,
     this.availableCalendars = const [],
     this.hasPermission = false,
@@ -52,6 +54,7 @@ class CalendarSyncState {
     String? selectedCalendarName,
     DateTime? lastSyncTime,
     bool? isSyncing,
+    bool? isLoadingCalendars,
     String? errorMessage,
     List<Calendar>? availableCalendars,
     bool? hasPermission,
@@ -67,6 +70,7 @@ class CalendarSyncState {
       selectedCalendarName: selectedCalendarName ?? this.selectedCalendarName,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
       isSyncing: isSyncing ?? this.isSyncing,
+      isLoadingCalendars: isLoadingCalendars ?? this.isLoadingCalendars,
       errorMessage: errorMessage,
       availableCalendars: availableCalendars ?? this.availableCalendars,
       hasPermission: hasPermission ?? this.hasPermission,
@@ -199,6 +203,9 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
     debugPrint('[CALENDAR_SYNC] toggleSync called with enabled=$enabled');
 
     if (enabled) {
+      // Afficher le loader
+      state = state.copyWith(isLoadingCalendars: true, errorMessage: null);
+
       // Demander les permissions
       final calendarService = _ref.read(calendarServiceProvider);
       final hasPerms = await calendarService.requestPermissions();
@@ -206,13 +213,21 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
 
       if (!hasPerms) {
         // Sur Android 13+, parfois la permission est accordée mais pas encore détectée
-        // Attendre un peu et réessayer
-        await Future.delayed(const Duration(milliseconds: 500));
-        final hasPermsRetry = await calendarService.hasPermissions();
-        debugPrint('[CALENDAR_SYNC] hasPermissions retry: $hasPermsRetry');
+        // Attendre un peu et réessayer plusieurs fois
+        bool permGranted = false;
+        for (int i = 0; i < 5; i++) {
+          await Future.delayed(Duration(milliseconds: 500 * (i + 1)));
+          final hasPermsRetry = await calendarService.hasPermissions();
+          debugPrint('[CALENDAR_SYNC] hasPermissions retry $i: $hasPermsRetry');
+          if (hasPermsRetry) {
+            permGranted = true;
+            break;
+          }
+        }
 
-        if (!hasPermsRetry) {
+        if (!permGranted) {
           state = state.copyWith(
+            isLoadingCalendars: false,
             errorMessage: "Permission d'accès au calendrier refusée",
             hasPermission: false,
           );
@@ -221,22 +236,36 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
         }
       }
 
-      // Charger les calendriers
-      await _loadCalendars();
-      debugPrint('[CALENDAR_SYNC] After _loadCalendars: ${state.availableCalendars.length} calendars');
+      // Mettre à jour hasPermission immédiatement
+      state = state.copyWith(hasPermission: true);
 
-      // Si aucun calendrier trouvé, essayer de forcer le rechargement
-      if (state.availableCalendars.isEmpty) {
-        debugPrint('[CALENDAR_SYNC] No calendars found, retrying...');
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _loadCalendars();
-        debugPrint('[CALENDAR_SYNC] After retry: ${state.availableCalendars.length} calendars');
+      // Attendre que le système soit prêt après l'acceptation des permissions
+      // C'est crucial sur Android où les calendriers ne sont pas immédiatement disponibles
+      debugPrint('[CALENDAR_SYNC] Waiting for system to be ready...');
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      // Charger les calendriers avec plusieurs tentatives
+      List<Calendar> calendars = [];
+      for (int attempt = 0; attempt < 5; attempt++) {
+        debugPrint('[CALENDAR_SYNC] Loading calendars, attempt ${attempt + 1}');
+        calendars = await calendarService.getAvailableCalendarsForced();
+        debugPrint('[CALENDAR_SYNC] Got ${calendars.length} calendars');
+
+        if (calendars.isNotEmpty) {
+          break;
+        }
+
+        // Attendre avant de réessayer (délai croissant)
+        await Future.delayed(Duration(milliseconds: 800 * (attempt + 1)));
       }
 
+      // Masquer le loader
+      state = state.copyWith(isLoadingCalendars: false, availableCalendars: calendars);
+
       // Sélectionner automatiquement le premier calendrier valide si aucun n'est sélectionné
-      if (state.selectedCalendarId == null && state.availableCalendars.isNotEmpty) {
+      if (state.selectedCalendarId == null && calendars.isNotEmpty) {
         // Trouver le premier calendrier avec un id valide
-        final validCalendar = state.availableCalendars
+        final validCalendar = calendars
             .where((c) => c.id != null && c.id!.isNotEmpty)
             .firstOrNull;
 
@@ -246,17 +275,23 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
         } else {
           debugPrint('[CALENDAR_SYNC] No valid calendar found (all have null ids)');
           state = state.copyWith(
-            errorMessage: 'Aucun calendrier valide trouvé',
+            errorMessage: 'Aucun calendrier valide trouvé. Vérifiez que vous avez un compte calendrier configuré.',
           );
           return;
         }
       }
 
-      // Mettre à jour hasPermission
-      state = state.copyWith(hasPermission: true);
+      if (calendars.isEmpty) {
+        state = state.copyWith(
+          isEnabled: false,
+          errorMessage: 'Aucun calendrier trouvé. Vérifiez que vous avez un compte calendrier (Google, Samsung, etc.) configuré sur votre téléphone.',
+        );
+        await _savePreference(AppConstants.prefCalendarSyncEnabled, false);
+        return;
+      }
     }
 
-    state = state.copyWith(isEnabled: enabled);
+    state = state.copyWith(isEnabled: enabled, errorMessage: null);
     await _savePreference(AppConstants.prefCalendarSyncEnabled, enabled);
     debugPrint('[CALENDAR_SYNC] Sync ${enabled ? 'enabled' : 'disabled'}, state.isEnabled=${state.isEnabled}');
   }
@@ -327,6 +362,14 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
 
       // Synchroniser les devoirs et contrôles
       if (state.syncHomework || state.syncTests) {
+        // Charger l'emploi du temps sur une période étendue pour trouver les horaires des contrôles
+        debugPrint('[CALENDAR_SYNC] Fetching extended schedule for test times...');
+        await _ref.read(scheduleStateProvider.notifier).fetchSchedule(
+          startDate: now,
+          endDate: endDate,
+          forceRefresh: true,
+        );
+
         addedCount += await _syncHomework(
           calendarService,
           calendarId,
@@ -377,6 +420,14 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
     final scheduleState = _ref.read(scheduleStateProvider);
     final courses = scheduleState.data?.courses ?? [];
 
+    debugPrint('[CALENDAR_SYNC] Syncing ${homeworks.length} homework items');
+    debugPrint('[CALENDAR_SYNC] Schedule has ${courses.length} courses loaded');
+    if (courses.isNotEmpty) {
+      final firstDate = courses.first.startDateTime;
+      final lastDate = courses.last.startDateTime;
+      debugPrint('[CALENDAR_SYNC] Schedule range: $firstDate to $lastDate');
+    }
+
     int addedCount = 0;
 
     for (final homework in homeworks) {
@@ -405,18 +456,34 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
             course.startDateTime!.day != homework.dueDate!.day) {
           return false;
         }
-        // Même matière (comparer le code ou le nom)
-        final courseMatiere = (course.codeMatiere ?? course.matiere ?? '').toLowerCase();
-        final homeworkMatiere = (homework.codeMatiere ?? homework.matiere ?? '').toLowerCase();
-        return courseMatiere == homeworkMatiere ||
-               (course.matiere?.toLowerCase() ?? '') == homeworkMatiere;
+        // Même matière (comparer le code ou le nom, avec normalisation)
+        final courseCode = (course.codeMatiere ?? '').toLowerCase().trim();
+        final courseName = (course.matiere ?? '').toLowerCase().trim();
+        final homeworkCode = (homework.codeMatiere ?? '').toLowerCase().trim();
+        final homeworkName = (homework.matiere ?? '').toLowerCase().trim();
+
+        // Correspondance par code matière
+        if (courseCode.isNotEmpty && homeworkCode.isNotEmpty && courseCode == homeworkCode) {
+          return true;
+        }
+        // Correspondance par nom exact
+        if (courseName.isNotEmpty && homeworkName.isNotEmpty && courseName == homeworkName) {
+          return true;
+        }
+        // Correspondance partielle (le nom du cours contient le nom du devoir ou vice versa)
+        if (courseName.isNotEmpty && homeworkName.isNotEmpty) {
+          if (courseName.contains(homeworkName) || homeworkName.contains(courseName)) {
+            return true;
+          }
+        }
+        return false;
       }).firstOrNull;
 
       if (matchingCourse != null && matchingCourse.startDateTime != null) {
         // Utiliser l'heure exacte du cours
         startTime = matchingCourse.startDateTime!;
         endTime = matchingCourse.endDateTime;
-        debugPrint('[CALENDAR_SYNC] Found matching course for ${homework.matiere}: ${startTime.hour}:${startTime.minute}');
+        debugPrint('[CALENDAR_SYNC] ✓ Found course for "${homework.matiere}" on ${homework.dueDate}: ${startTime.hour}:${startTime.minute.toString().padLeft(2, '0')} - ${endTime?.hour}:${endTime?.minute.toString().padLeft(2, '0')}');
       } else {
         // Pas de cours trouvé, mettre à 8h00 par défaut (durée 1h)
         startTime = DateTime(
@@ -426,7 +493,23 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
           8, 0,
         );
         endTime = startTime.add(const Duration(hours: 1));
-        debugPrint('[CALENDAR_SYNC] No matching course for ${homework.matiere}, using default 8:00');
+
+        // Debug: lister les cours disponibles ce jour-là
+        final coursesOnDay = courses.where((c) =>
+          c.startDateTime != null &&
+          c.startDateTime!.year == homework.dueDate!.year &&
+          c.startDateTime!.month == homework.dueDate!.month &&
+          c.startDateTime!.day == homework.dueDate!.day
+        ).toList();
+
+        if (coursesOnDay.isEmpty) {
+          debugPrint('[CALENDAR_SYNC] ✗ No courses loaded for ${homework.dueDate} (matière: ${homework.matiere}, code: ${homework.codeMatiere})');
+        } else {
+          debugPrint('[CALENDAR_SYNC] ✗ No match for "${homework.matiere}" (code: ${homework.codeMatiere}). Courses on ${homework.dueDate}:');
+          for (final c in coursesOnDay) {
+            debugPrint('   - ${c.matiere} (code: ${c.codeMatiere}) at ${c.startDateTime?.hour}:${c.startDateTime?.minute.toString().padLeft(2, '0')}');
+          }
+        }
       }
 
       final eventKey = '${title}_${startTime.toIso8601String()}';
@@ -445,7 +528,7 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
         end: endTime,
         allDay: false, // Événement avec heure précise
         description: description,
-        reminderMinutes: isTest ? [1440, 60] : [1440], // 1 jour avant, + 1h avant pour contrôles
+        // Pas de rappel pour ne pas encombrer les notifications
       );
 
       if (success) addedCount++;

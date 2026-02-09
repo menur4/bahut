@@ -8,6 +8,7 @@ import 'core/services/quick_actions_service.dart';
 import 'core/services/system_integration_service.dart';
 import 'core/theme/app_themes.dart';
 import 'core/theme/theme_provider.dart';
+import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/grades/presentation/providers/grades_provider.dart';
 import 'features/homework/presentation/providers/homework_provider.dart';
 import 'features/schedule/presentation/providers/schedule_provider.dart';
@@ -146,6 +147,10 @@ class _CalculMoyenneAppState extends ConsumerState<CalculMoyenneApp>
       ),
     );
 
+    // Observer l'état de chargement post-authentification pour l'overlay global
+    final authState = ref.watch(authStateProvider);
+    final isPostAuthLoading = authState.isPostAuthLoading;
+
     return PlatformProvider(
       settings: PlatformSettingsData(
         iosUsesMaterialWidgets: false,
@@ -157,14 +162,74 @@ class _CalculMoyenneAppState extends ConsumerState<CalculMoyenneApp>
         materialDarkTheme: materialDarkTheme,
         cupertinoLightTheme: cupertinoLightTheme,
         cupertinoDarkTheme: cupertinoDarkTheme,
-        builder: (context) => PlatformApp.router(
-          title: 'Bahut',
-          debugShowCheckedModeBanner: false,
-          localizationsDelegates: const [
-            DefaultMaterialLocalizations.delegate,
-            DefaultWidgetsLocalizations.delegate,
-          ],
-          routerConfig: router,
+        builder: (context) => Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              // L'app avec le router
+              PlatformApp.router(
+                title: 'Bahut',
+                debugShowCheckedModeBanner: false,
+                localizationsDelegates: const [
+                  DefaultMaterialLocalizations.delegate,
+                  DefaultWidgetsLocalizations.delegate,
+                ],
+                routerConfig: router,
+              ),
+              // Overlay global de chargement post-authentification
+              // S'affiche AU-DESSUS du router pour masquer la transition noire
+              // Utilise des couleurs codées en dur car on est hors du contexte de l'app
+              if (isPostAuthLoading)
+                Positioned.fill(
+                  child: Container(
+                    color: themeMode == ThemeMode.dark
+                        ? const Color(0xFF1A1A1A)
+                        : Colors.white,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: lightPalette.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Icon(
+                              Icons.school_rounded,
+                              size: 44,
+                              color: lightPalette.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: lightPalette.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Chargement de vos données...',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: themeMode == ThemeMode.dark
+                                  ? Colors.white70
+                                  : Colors.black54,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

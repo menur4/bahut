@@ -66,12 +66,23 @@ extension GradeModelExtension on GradeModel {
     return double.tryParse(moyenneClasse!.replaceAll(',', '.'));
   }
 
-  /// Date formatée
+  /// Date de l'examen formatée
   DateTime? get dateTime {
     if (date == null) return null;
     try {
       // Format API: "2024-01-15"
       return DateTime.parse(date!);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Date de saisie formatée (quand la note est apparue dans le système)
+  DateTime? get dateSaisieTime {
+    if (dateSaisie == null) return null;
+    try {
+      // Format API: "2024-01-15" ou "2024-01-15 14:30:00"
+      return DateTime.parse(dateSaisie!);
     } catch (_) {
       return null;
     }
