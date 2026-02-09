@@ -411,6 +411,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                   ),
+                  if (syncState.notifyNewGrades) ...[
+                    const Divider(height: 1, indent: 72),
+                    _SettingsTile(
+                      icon: Icons.notification_add_outlined,
+                      title: 'Tester les notifications',
+                      subtitle: 'Envoyer une notification de test',
+                      palette: palette,
+                      onTap: () async {
+                        final notificationService = ref.read(notificationServiceProvider);
+                        await notificationService.initialize();
+                        await notificationService.showNewGradesNotification(
+                          count: 2,
+                          gradeDetails: ['Maths: 15/20', 'Anglais: 17/20'],
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Notification de test envoyée'),
+                              backgroundColor: palette.success,
+                            ),
+                          );
+                        }
+                      },
+                      trailing: Icon(
+                        Icons.send,
+                        color: palette.textMuted,
+                        size: 20,
+                      ),
+                    ),
+                  ],
                 ],
               ], palette),
 
