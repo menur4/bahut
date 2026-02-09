@@ -362,6 +362,10 @@ class CalendarSyncNotifier extends StateNotifier<CalendarSyncState> {
 
       // Synchroniser les devoirs et contrôles
       if (state.syncHomework || state.syncTests) {
+        // S'assurer que les devoirs sont chargés depuis l'API
+        debugPrint('[CALENDAR_SYNC] Fetching homework data...');
+        await _ref.read(homeworkStateProvider.notifier).fetchHomework(forceRefresh: true);
+
         // Charger l'emploi du temps sur une période étendue pour trouver les horaires des contrôles
         debugPrint('[CALENDAR_SYNC] Fetching extended schedule for test times...');
         await _ref.read(scheduleStateProvider.notifier).fetchSchedule(
