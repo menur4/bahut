@@ -141,9 +141,11 @@ class BackgroundSyncNotifier extends StateNotifier<BackgroundSyncState> {
     await _savePreferences();
 
     if (enabled) {
-      // Demander les permissions de notification
+      // Demander les permissions de notification et activer le flag global
       final notificationService = _ref.read(notificationServiceProvider);
+      await notificationService.initialize();
       await notificationService.requestPermissions();
+      await notificationService.setNotificationsEnabled(true);
     }
   }
 

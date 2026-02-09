@@ -421,6 +421,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onTap: () async {
                         final notificationService = ref.read(notificationServiceProvider);
                         await notificationService.initialize();
+                        await notificationService.requestPermissions();
+                        await notificationService.setNotificationsEnabled(true);
                         await notificationService.showNewGradesNotification(
                           count: 2,
                           gradeDetails: ['Maths: 15/20', 'Anglais: 17/20'],
