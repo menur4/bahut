@@ -11,6 +11,51 @@ import '../../../../core/network/api_client.dart';
 import '../../data/models/user_model.dart';
 import '../../data/models/auth_response_model.dart';
 
+/// Compte sauvegardé pour le changement rapide de compte
+class SavedAccount {
+  final String username;
+  final String password;
+  final String displayName;
+  final String typeCompte;
+  final List<ChildModel> children;
+  final int? selectedChildId;
+  final DateTime lastUsed;
+
+  const SavedAccount({
+    required this.username,
+    required this.password,
+    required this.displayName,
+    required this.typeCompte,
+    required this.children,
+    this.selectedChildId,
+    required this.lastUsed,
+  });
+
+  String get initiale => displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+
+  Map<String, dynamic> toJson() => {
+    'username': username,
+    'password': password,
+    'displayName': displayName,
+    'typeCompte': typeCompte,
+    'children': children.map((c) => c.toJson()).toList(),
+    'selectedChildId': selectedChildId,
+    'lastUsed': lastUsed.toIso8601String(),
+  };
+
+  factory SavedAccount.fromJson(Map<String, dynamic> json) => SavedAccount(
+    username: json['username'] as String,
+    password: json['password'] as String,
+    displayName: json['displayName'] as String? ?? '',
+    typeCompte: json['typeCompte'] as String? ?? '',
+    children: (json['children'] as List?)
+        ?.map((e) => ChildModel.fromJson(e as Map<String, dynamic>))
+        .toList() ?? [],
+    selectedChildId: json['selectedChildId'] as int?,
+    lastUsed: DateTime.tryParse(json['lastUsed'] as String? ?? '') ?? DateTime.now(),
+  );
+}
+
 /// État de l'authentification
 class AuthState {
   final bool isAuthenticated;
@@ -37,6 +82,12 @@ class AuthState {
   /// Indique si la biométrie a été vérifiée pour cette session
   final bool biometricVerified;
 
+  /// Comptes sauvegardés pour le changement rapide
+  final List<SavedAccount> savedAccounts;
+
+  /// Username du compte actif
+  final String? currentUsername;
+
   const AuthState({
     this.isAuthenticated = false,
     this.isLoading = false,
@@ -51,6 +102,8 @@ class AuthState {
     this.isDemoMode = false,
     this.isPostAuthLoading = false,
     this.biometricVerified = false,
+    this.savedAccounts = const [],
+    this.currentUsername,
   });
 
   /// Indique si l'app est en cours de chargement (init ou opération)
@@ -78,6 +131,8 @@ class AuthState {
     bool? isDemoMode,
     bool? isPostAuthLoading,
     bool? biometricVerified,
+    List<SavedAccount>? savedAccounts,
+    String? currentUsername,
   }) {
     return AuthState(
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -93,6 +148,8 @@ class AuthState {
       isDemoMode: isDemoMode ?? this.isDemoMode,
       isPostAuthLoading: isPostAuthLoading ?? this.isPostAuthLoading,
       biometricVerified: biometricVerified ?? this.biometricVerified,
+      savedAccounts: savedAccounts ?? this.savedAccounts,
+      currentUsername: currentUsername ?? this.currentUsername,
     );
   }
 }
@@ -153,6 +210,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
         print('[AUTH] Token restauré dans ApiClient');
       }
 
+      // Charger les comptes sauvegardés
+      final savedAccountsJson = await _secureStorage.read(key: AppConstants.secureStorageSavedAccounts);
+      List<SavedAccount> savedAccounts = [];
+      if (savedAccountsJson != null) {
+        final list = jsonDecode(savedAccountsJson) as List;
+        savedAccounts = list.map((e) => SavedAccount.fromJson(e as Map<String, dynamic>)).toList();
+      }
+
+      final currentUsername = await _secureStorage.read(key: AppConstants.secureStorageCurrentUsername);
+
       final isAuthenticated = token != null && token.isNotEmpty;
       state = state.copyWith(
         isAuthenticated: isAuthenticated,
@@ -160,9 +227,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         selectedChildId: selectedChildId != null ? int.tryParse(selectedChildId) : null,
         children: children,
         isInitializing: false,
-        // Si déjà authentifié au démarrage, activer le chargement post-auth
-        // pour que le dashboard affiche un loading pendant le chargement des données
         isPostAuthLoading: isAuthenticated,
+        savedAccounts: savedAccounts,
+        currentUsername: currentUsername,
       );
     } catch (e) {
       // En cas d'erreur, marquer comme initialisé pour permettre la navigation
@@ -172,8 +239,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Se connecter avec identifiants
-  Future<void> login(String username, String password) async {
-    state = state.copyWith(isLoading: true, errorMessage: null, mfaRequired: false, qcmData: null);
+  /// [silent] = true lors d'un switch de compte : n'active pas isLoading pour éviter les redirects du routeur
+  Future<void> login(String username, String password, {bool silent = false}) async {
+    if (!silent) {
+      state = state.copyWith(isLoading: true, errorMessage: null, mfaRequired: false, qcmData: null);
+    }
 
     // Vérifier si c'est un login démo (Play Store)
     if (DemoCredentials.isDemo(username, password)) {
@@ -223,20 +293,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } on AuthException catch (e) {
       print('[AUTH] AuthException: ${e.message}');
       state = state.copyWith(
-        isLoading: false,
+        isLoading: silent ? state.isLoading : false,
         errorMessage: e.message,
       );
     } on NetworkException catch (e) {
       print('[AUTH] NetworkException: $e');
       state = state.copyWith(
-        isLoading: false,
+        isLoading: silent ? state.isLoading : false,
         errorMessage: 'Pas de connexion internet',
       );
     } catch (e, stackTrace) {
       print('[AUTH] Exception inattendue: $e');
       print('[AUTH] StackTrace: $stackTrace');
       state = state.copyWith(
-        isLoading: false,
+        isLoading: silent ? state.isLoading : false,
         errorMessage: 'Une erreur est survenue: ${e.toString()}',
       );
     }
@@ -486,6 +556,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
     }
 
+    // Si toujours aucun enfant : c'est un compte élève direct (l'utilisateur est lui-même l'élève)
+    if (children.isEmpty) {
+      print('[AUTH] Aucun enfant trouvé - compte élève direct, création depuis données utilisateur');
+      final profile = accountJson['profile'] as Map<String, dynamic>?;
+
+      // La classe peut être dans profile ou directement dans accountJson
+      final classeRaw = profile?['classe'] ?? accountJson['classe'];
+      String? classe;
+      if (classeRaw is String && classeRaw.isNotEmpty) {
+        classe = classeRaw;
+      } else if (classeRaw is Map<String, dynamic>) {
+        classe = classeRaw['libelle']?.toString();
+      }
+
+      // La photo peut être dans profile ou directement
+      final photoRaw = profile?['photo'] ?? accountJson['photo'];
+      final photo = photoRaw?.toString().isNotEmpty == true ? photoRaw.toString() : null;
+
+      children = [
+        ChildModel(
+          id: accountJson['id'] as int,
+          nom: accountJson['nom']?.toString() ?? '',
+          prenom: accountJson['prenom']?.toString() ?? '',
+          photo: photo,
+          classe: classe,
+        ),
+      ];
+      print('[AUTH] Élève créé: ${children.first.prenom} ${children.first.nom}, classe: $classe, photo: ${photo != null}');
+    }
+
     print('[AUTH] Nombre d\'enfants final: ${children.length}');
     for (final child in children) {
       print('[AUTH] Enfant: ${child.prenom} ${child.nom}, id: ${child.id}, photo: ${child.photo != null ? "OUI (${child.photo!.length} chars)" : "NON"}');
@@ -550,6 +650,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     print('[AUTH] selectedChildId final: $selectedChildId');
 
+    // Enregistrer le username courant
+    await _secureStorage.write(
+      key: AppConstants.secureStorageCurrentUsername,
+      value: username,
+    );
+
+    // Sauvegarder ce compte dans la liste des comptes sauvegardés
+    await _saveAccountToList(
+      username: username,
+      password: password,
+      user: user,
+      children: children,
+      selectedChildId: selectedChildId,
+    );
+
     state = state.copyWith(
       isAuthenticated: true,
       isLoading: false,
@@ -558,8 +673,90 @@ class AuthNotifier extends StateNotifier<AuthState> {
       selectedChildId: selectedChildId,
       mfaRequired: false,
       qcmData: null,
-      isPostAuthLoading: true, // Activer le chargement post-auth
+      isPostAuthLoading: true,
+      currentUsername: username,
+      savedAccounts: await _loadSavedAccountsList(),
     );
+  }
+
+  /// Charge la liste des comptes sauvegardés depuis le stockage
+  Future<List<SavedAccount>> _loadSavedAccountsList() async {
+    final json = await _secureStorage.read(key: AppConstants.secureStorageSavedAccounts);
+    if (json == null) return [];
+    final list = jsonDecode(json) as List;
+    return list.map((e) => SavedAccount.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Enregistre ou met à jour un compte dans la liste des comptes sauvegardés
+  Future<void> _saveAccountToList({
+    required String username,
+    required String password,
+    required UserModel user,
+    required List<ChildModel> children,
+    int? selectedChildId,
+  }) async {
+    final accounts = await _loadSavedAccountsList();
+    final displayName = user.fullName.isNotEmpty ? user.fullName : username;
+    final newAccount = SavedAccount(
+      username: username,
+      password: password,
+      displayName: displayName,
+      typeCompte: user.typeCompte,
+      children: children,
+      selectedChildId: selectedChildId,
+      lastUsed: DateTime.now(),
+    );
+    // Remplacer si existe déjà, sinon ajouter
+    final idx = accounts.indexWhere((a) => a.username == username);
+    if (idx >= 0) {
+      accounts[idx] = newAccount;
+    } else {
+      accounts.add(newAccount);
+    }
+    // Trier par dernière utilisation
+    accounts.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+    await _secureStorage.write(
+      key: AppConstants.secureStorageSavedAccounts,
+      value: jsonEncode(accounts.map((a) => a.toJson()).toList()),
+    );
+  }
+
+  /// Changer de compte (reconnexion avec les credentials sauvegardés)
+  Future<void> switchAccount(SavedAccount account) async {
+    // Sauvegarder le selectedChildId courant pour le compte actif
+    if (state.currentUsername != null) {
+      final accounts = await _loadSavedAccountsList();
+      final idx = accounts.indexWhere((a) => a.username == state.currentUsername);
+      if (idx >= 0 && state.selectedChildId != null) {
+        final current = accounts[idx];
+        accounts[idx] = SavedAccount(
+          username: current.username,
+          password: current.password,
+          displayName: current.displayName,
+          typeCompte: current.typeCompte,
+          children: current.children,
+          selectedChildId: state.selectedChildId,
+          lastUsed: current.lastUsed,
+        );
+        await _secureStorage.write(
+          key: AppConstants.secureStorageSavedAccounts,
+          value: jsonEncode(accounts.map((a) => a.toJson()).toList()),
+        );
+      }
+    }
+    // Se connecter avec le nouveau compte sans déclencher isLoading (évite les redirects du routeur)
+    await login(account.username, account.password, silent: true);
+  }
+
+  /// Supprimer un compte sauvegardé
+  Future<void> removeSavedAccount(String username) async {
+    final accounts = await _loadSavedAccountsList();
+    accounts.removeWhere((a) => a.username == username);
+    await _secureStorage.write(
+      key: AppConstants.secureStorageSavedAccounts,
+      value: jsonEncode(accounts.map((a) => a.toJson()).toList()),
+    );
+    state = state.copyWith(savedAccounts: accounts);
   }
 
   /// Sélectionner un enfant
@@ -598,12 +795,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await apiClient.clearSession();
     }
 
+    // Préserver les comptes sauvegardés avant de tout effacer
+    final savedAccountsJson = await _secureStorage.read(key: AppConstants.secureStorageSavedAccounts);
+
     await _secureStorage.deleteAll();
+
+    // Restaurer les comptes sauvegardés
+    if (savedAccountsJson != null) {
+      await _secureStorage.write(
+        key: AppConstants.secureStorageSavedAccounts,
+        value: savedAccountsJson,
+      );
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.prefChildrenCache);
     await prefs.remove(AppConstants.prefGradesCache);
 
-    state = const AuthState(isInitializing: false);
+    final savedAccounts = await _loadSavedAccountsList();
+    state = AuthState(isInitializing: false, savedAccounts: savedAccounts);
   }
 
   /// Rafraîchir le token avec les credentials sauvegardés

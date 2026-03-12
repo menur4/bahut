@@ -12,6 +12,8 @@ class AppConstants {
   static const String secureStorageSelectedChild = 'ed_selected_child';
   static const String secureStorageDeviceCn = 'ed_device_cn';
   static const String secureStorageDeviceCv = 'ed_device_cv';
+  static const String secureStorageSavedAccounts = 'ed_saved_accounts';
+  static const String secureStorageCurrentUsername = 'ed_current_username';
 
   /// Clés pour shared preferences
   static const String prefBiometricEnabled = 'biometric_enabled';

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../../core/constants/changelog.dart';
 import '../../../../core/services/background_sync_service.dart';
 import '../../../../core/services/haptic_service.dart';
 import '../../../../core/services/notification_service.dart';
@@ -86,6 +87,115 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _notificationsEnabled = value;
     });
+  }
+
+  void _showChangelog(AppColorPalette palette) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: palette.backgroundCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(ChanelTheme.radiusLg)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle
+            Container(
+              margin:
+                  const EdgeInsets.symmetric(vertical: ChanelTheme.spacing3),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: palette.borderLight,
+                borderRadius:
+                    BorderRadius.circular(ChanelTheme.radiusFull),
+              ),
+            ),
+            // Titre
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: ChanelTheme.spacing4),
+              child: Text(
+                'NOUVEAUTÉS',
+                style: ChanelTypography.titleSmall.copyWith(
+                  letterSpacing: ChanelTypography.letterSpacingWider,
+                  color: palette.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: ChanelTheme.spacing4),
+            // Liste scrollable
+            Expanded(
+              child: ListView.separated(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: ChanelTheme.spacing4),
+                itemCount: appChangelog.length,
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: ChanelTheme.spacing4),
+                itemBuilder: (context, index) {
+                  final entry = appChangelog[index];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'v${entry.version}',
+                            style: ChanelTypography.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: palette.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: ChanelTheme.spacing2),
+                          Text(
+                            entry.date,
+                            style: ChanelTypography.bodySmall.copyWith(
+                              color: palette.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: ChanelTheme.spacing1),
+                      ...entry.changes.map(
+                        (change) => Padding(
+                          padding: const EdgeInsets.only(
+                              top: ChanelTheme.spacing1),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '• ',
+                                style: ChanelTypography.bodySmall.copyWith(
+                                    color: palette.textTertiary),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  change,
+                                  style: ChanelTypography.bodySmall
+                                      .copyWith(color: palette.textTertiary),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: ChanelTheme.spacing6),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -302,6 +412,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     title: 'Déconnexion',
                     subtitle: 'Se déconnecter de l\'application',
                     onTap: _logout,
+                    palette: palette,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: palette.textMuted,
+                    ),
+                  ),
+                ], palette),
+
+                const SizedBox(height: ChanelTheme.spacing6),
+
+                // Section À propos
+                _buildSectionHeader('À PROPOS', palette),
+                const SizedBox(height: ChanelTheme.spacing2),
+                _buildSettingsCard([
+                  _SettingsTile(
+                    icon: Icons.new_releases_outlined,
+                    title: 'Nouveautés',
+                    subtitle: 'Voir les dernières mises à jour',
+                    onTap: () => _showChangelog(palette),
                     palette: palette,
                     trailing: Icon(
                       Icons.chevron_right,

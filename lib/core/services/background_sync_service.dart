@@ -197,12 +197,6 @@ Future<void> _checkNewGradesInBackground(SharedPreferences prefs) async {
       }
     }
 
-    // Sauvegarder les IDs comme vus
-    await prefs.setString(
-      AppConstants.prefSeenGradeIds,
-      jsonEncode(currentIds.toList()),
-    );
-
     // Vérifier si les notifications sont activées
     final notifyEnabled =
         prefs.getBool(AppConstants.prefGradesNotifyEnabled) ?? true;
@@ -212,11 +206,22 @@ Future<void> _checkNewGradesInBackground(SharedPreferences prefs) async {
     if (!notifyEnabled || !notificationsEnabled) {
       debugPrint(
           '[BACKGROUND_SYNC] Notifications disabled, skipping notification');
+      // Intentionnellement ignoré → on marque quand même comme vues
+      await prefs.setString(
+        AppConstants.prefSeenGradeIds,
+        jsonEncode(currentIds.toList()),
+      );
       return;
     }
 
     // Envoyer la notification
     await _showBackgroundNotification(newIds.length, gradesBySubject);
+
+    // Marquer comme vues UNIQUEMENT après succès de la notification
+    await prefs.setString(
+      AppConstants.prefSeenGradeIds,
+      jsonEncode(currentIds.toList()),
+    );
 
     debugPrint(
         '[BACKGROUND_SYNC] Notification sent for ${newIds.length} new grades');
@@ -244,6 +249,21 @@ Future<void> _showBackgroundNotification(
     iOS: iosSettings,
   );
   await notifications.initialize(initSettings);
+
+  // Créer le canal Android (requis pour Android 8.0+ / API 26+)
+  // createNotificationChannel est idempotent : si le canal existe déjà, Android l'ignore
+  if (Platform.isAndroid) {
+    final android = notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'new_grades',
+        'Nouvelles notes',
+        description: 'Notifications pour les nouvelles notes',
+        importance: Importance.high,
+      ),
+    );
+  }
 
   // Construire le détail des notes
   final details = <String>[];

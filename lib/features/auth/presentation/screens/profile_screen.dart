@@ -117,6 +117,143 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _switchAccount(SavedAccount account, AppColorPalette palette) async {
+    await ref.read(authStateProvider.notifier).switchAccount(account);
+    final authState = ref.read(authStateProvider);
+    if (authState.mfaRequired) {
+      // MFA requis pour ce compte - le router navigue automatiquement vers /qcm
+      return;
+    }
+    await ref.read(gradesStateProvider.notifier).clearCache();
+    if (mounted) context.go(AppRoutes.dashboard);
+  }
+
+  Future<void> _showAddAccountSheet(AppColorPalette palette) async {
+    final usernameCtrl = TextEditingController();
+    final passwordCtrl = TextEditingController();
+    String? errorMsg;
+    bool loading = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: palette.backgroundCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            24, 24, 24,
+            24 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Ajouter un compte',
+                style: ChanelTypography.headlineSmall.copyWith(color: palette.textPrimary),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: usernameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Identifiant',
+                  labelStyle: TextStyle(color: palette.textSecondary),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Mot de passe',
+                  labelStyle: TextStyle(color: palette.textSecondary),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                obscureText: true,
+              ),
+              if (errorMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(errorMsg!, style: TextStyle(color: palette.error, fontSize: 13)),
+              ],
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        if (usernameCtrl.text.isEmpty || passwordCtrl.text.isEmpty) {
+                          setSheetState(() => errorMsg = 'Identifiant et mot de passe requis');
+                          return;
+                        }
+                        setSheetState(() { loading = true; errorMsg = null; });
+                        // Appel login via le notifier (sauvegarde auto du compte)
+                        await ref.read(authStateProvider.notifier).login(
+                          usernameCtrl.text.trim(),
+                          passwordCtrl.text,
+                        );
+                        final authState = ref.read(authStateProvider);
+                        if (authState.errorMessage != null) {
+                          setSheetState(() {
+                            loading = false;
+                            errorMsg = authState.errorMessage;
+                          });
+                        } else {
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          await ref.read(gradesStateProvider.notifier).clearCache();
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: palette.accent,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: loading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Se connecter', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    usernameCtrl.dispose();
+    passwordCtrl.dispose();
+  }
+
+  Future<void> _removeSavedAccount(String username, AppColorPalette palette) async {
+    final confirmed = await showPlatformDialog<bool>(
+      context: context,
+      builder: (context) => PlatformAlertDialog(
+        title: const Text('Supprimer le compte'),
+        content: const Text('Retirer ce compte de la liste des accès rapides ?'),
+        actions: [
+          PlatformDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          PlatformDialogAction(
+            onPressed: () => Navigator.of(context).pop(true),
+            material: (_, __) => MaterialDialogActionData(
+              child: Text('Supprimer', style: TextStyle(color: palette.error)),
+            ),
+            cupertino: (_, __) => CupertinoDialogActionData(
+              isDestructiveAction: true,
+              child: const Text('Supprimer'),
+            ),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(authStateProvider.notifier).removeSavedAccount(username);
+    }
+  }
+
   Future<void> _logout(AppColorPalette palette) async {
     final confirmed = await showPlatformDialog<bool>(
       context: context,
@@ -267,25 +404,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
             const SizedBox(height: ChanelTheme.spacing6),
 
-            // Changer d'enfant
-            if (authState.hasMultipleChildren) ...[
-              Text(
-                'COMPTE',
-                style: ChanelTypography.labelMedium.copyWith(
-                  letterSpacing: ChanelTypography.letterSpacingWider,
-                  color: palette.textTertiary,
-                ),
-              ),
-              const SizedBox(height: ChanelTheme.spacing3),
-              _SettingsCard(
-                icon: Icons.switch_account,
-                title: 'Changer d\'enfant',
-                subtitle: 'Basculer vers un autre profil',
-                onTap: () => context.go(AppRoutes.children),
-                palette: palette,
-              ),
-              const SizedBox(height: ChanelTheme.spacing6),
-            ],
+            // Section Comptes (visible uniquement si contenu)
+            Builder(builder: (context) {
+              final otherAccounts = authState.savedAccounts
+                  .where((a) => a.username != authState.currentUsername)
+                  .toList();
+              final hasAccountSection = authState.hasMultipleChildren || otherAccounts.isNotEmpty;
+
+              if (!hasAccountSection) return const SizedBox.shrink();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'COMPTES',
+                    style: ChanelTypography.labelMedium.copyWith(
+                      letterSpacing: ChanelTypography.letterSpacingWider,
+                      color: palette.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(height: ChanelTheme.spacing3),
+
+                  // Changer d'enfant (si plusieurs enfants sur le compte actif)
+                  if (authState.hasMultipleChildren) ...[
+                    _SettingsCard(
+                      icon: Icons.switch_account,
+                      title: 'Changer d\'enfant',
+                      subtitle: 'Basculer vers un autre profil',
+                      onTap: () => context.go(AppRoutes.children),
+                      palette: palette,
+                    ),
+                    const SizedBox(height: ChanelTheme.spacing2),
+                  ],
+
+                  // Comptes sauvegardés (autres comptes)
+                  ...otherAccounts.map((account) => Padding(
+                        padding: const EdgeInsets.only(bottom: ChanelTheme.spacing2),
+                        child: _AccountCard(
+                          account: account,
+                          palette: palette,
+                          onSwitch: () => _switchAccount(account, palette),
+                          onRemove: () => _removeSavedAccount(account.username, palette),
+                        ),
+                      )),
+
+                  // Ajouter un compte
+                  _SettingsCard(
+                    icon: Icons.add_circle_outline,
+                    title: 'Ajouter un compte',
+                    subtitle: 'Se connecter avec un autre identifiant',
+                    onTap: () => _showAddAccountSheet(palette),
+                    palette: palette,
+                  ),
+
+                  const SizedBox(height: ChanelTheme.spacing6),
+                ],
+              );
+            }),
 
             // Déconnexion
             _SettingsCard(
@@ -320,6 +495,74 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         initials,
         style: ChanelTypography.headlineMedium.copyWith(
           color: palette.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Carte pour un compte sauvegardé (accès rapide)
+class _AccountCard extends StatelessWidget {
+  final SavedAccount account;
+  final AppColorPalette palette;
+  final VoidCallback onSwitch;
+  final VoidCallback onRemove;
+
+  const _AccountCard({
+    required this.account,
+    required this.palette,
+    required this.onSwitch,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final childInfo = account.children.isNotEmpty
+        ? account.children.map((c) => c.prenom).join(', ')
+        : null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.backgroundCard,
+        borderRadius: BorderRadius.circular(ChanelTheme.radiusMd),
+        border: Border.all(color: palette.borderLight),
+      ),
+      child: ListTile(
+        onTap: onSwitch,
+        leading: CircleAvatar(
+          radius: 20,
+          backgroundColor: palette.backgroundTertiary,
+          child: Text(
+            account.initiale,
+            style: ChanelTypography.bodyLarge.copyWith(
+              color: palette.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        title: Text(
+          account.displayName,
+          style: ChanelTypography.bodyLarge.copyWith(color: palette.textPrimary),
+        ),
+        subtitle: Text(
+          childInfo != null ? 'Enfants : $childInfo' : account.typeCompte,
+          style: ChanelTypography.bodySmall.copyWith(color: palette.textTertiary),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Basculer',
+              style: ChanelTypography.bodySmall.copyWith(color: palette.accent),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(Icons.close, size: 18, color: palette.textMuted),
+              onPressed: onRemove,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
         ),
       ),
     );

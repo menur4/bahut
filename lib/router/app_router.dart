@@ -25,26 +25,43 @@ import '../shared/widgets/loading_screen.dart';
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final shellNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Provider pour le router
+/// ChangeNotifier qui écoute l'état d'auth et notifie le router de se rafraîchir.
+/// Permet de garder une seule instance de GoRouter (évite les redirect loops).
+class _RouterAuthNotifier extends ChangeNotifier {
+  final Ref _ref;
+  AuthState _authState;
+
+  _RouterAuthNotifier(this._ref) : _authState = _ref.read(authStateProvider) {
+    _ref.listen<AuthState>(authStateProvider, (_, next) {
+      _authState = next;
+      notifyListeners();
+    });
+  }
+
+  AuthState get authState => _authState;
+}
+
+/// Provider pour le router — créé une seule fois, rafraîchi via refreshListenable
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
+  final notifier = _RouterAuthNotifier(ref);
+  ref.onDispose(notifier.dispose);
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/loading',
     debugLogDiagnostics: true,
+    refreshListenable: notifier,
     redirect: (context, state) {
+      final authState = notifier.authState;
       final isLoggedIn = authState.isAuthenticated;
       final isProcessing = authState.isProcessing;
       final mfaRequired = authState.mfaRequired;
       final isOnLoading = state.matchedLocation == '/loading';
       final isLoggingIn = state.matchedLocation == '/login';
       final isOnQcm = state.matchedLocation == '/qcm';
-      final isOnBiometric = state.matchedLocation == '/biometric';
-      final isOnChildSelector = state.matchedLocation == '/children';
 
       // Si en cours de chargement (init ou login/QCM en cours), rester sur loading
-      if (isProcessing && !isLoggingIn && !isOnQcm) {
+      if (isProcessing && !isLoggingIn && !isOnQcm && !isOnLoading) {
         return '/loading';
       }
 
@@ -82,8 +99,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
           return '/dashboard';
         }
-        // Si sur QCM (MFA réussi), aller directement au dashboard (pas de biométrie après MFA)
+        // Si sur QCM, attendre la résolution du MFA avant de naviguer
         if (isOnQcm) {
+          if (mfaRequired) return null; // MFA toujours en cours
           if (authState.hasMultipleChildren && authState.selectedChildId == null) {
             return '/children';
           }

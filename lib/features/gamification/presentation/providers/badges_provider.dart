@@ -114,10 +114,66 @@ final badgeContextProvider = Provider<BadgeContext>((ref) {
     }
   }
 
+  // Calculer l'amélioration de moyenne sur les 30 derniers jours
+  // Comparer moyenne(notes des 30 derniers jours) vs moyenne(notes des 30-60 jours passés)
+  double? improvement30Days;
+  final now = DateTime.now();
+  final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+  final sixtyDaysAgo = now.subtract(const Duration(days: 60));
+
+  final recentGrades = <double>[];
+  final olderGrades = <double>[];
+
+  for (final grade in gradesState.grades) {
+    final val = grade.valeurSur20;
+    final date = grade.dateTime;
+    if (val == null || date == null) continue;
+
+    if (date.isAfter(thirtyDaysAgo)) {
+      recentGrades.add(val);
+    } else if (date.isAfter(sixtyDaysAgo)) {
+      olderGrades.add(val);
+    }
+  }
+
+  if (recentGrades.isNotEmpty && olderGrades.isNotEmpty) {
+    final recentAvg = recentGrades.reduce((a, b) => a + b) / recentGrades.length;
+    final olderAvg = olderGrades.reduce((a, b) => a + b) / olderGrades.length;
+    improvement30Days = recentAvg - olderAvg;
+  }
+
+  // Calculer les notes consécutives >= 12 directement depuis les notes (toujours à jour)
+  int consecutiveGoodGrades = 0;
+  {
+    int consecutive = 0;
+    int maxConsecutive = 0;
+    final sortedGrades = List.from(gradesState.grades)
+      ..sort((a, b) {
+        final dateA = a.dateTime;
+        final dateB = b.dateTime;
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;  // dates nulles à la fin
+        if (dateB == null) return -1;
+        return dateA.compareTo(dateB);
+      });
+    for (final grade in sortedGrades) {
+      if (grade.dateTime == null) break; // dates nulles à la fin, on s'arrête
+      final val = grade.valeurSur20;
+      if (val == null) continue; // Abs/Disp/NE ignorés
+      if (val >= 12) {
+        consecutive++;
+        if (consecutive > maxConsecutive) maxConsecutive = consecutive;
+      } else {
+        consecutive = 0;
+      }
+    }
+    consecutiveGoodGrades = maxConsecutive;
+  }
+
   return BadgeContext(
     totalGrades: gradesState.grades.length,
     generalAverage: stats.generalAverage > 0 ? stats.generalAverage : null,
-    consecutiveGoodGrades: badgesState.consecutiveGoodGrades,
+    consecutiveGoodGrades: consecutiveGoodGrades,
     daysWithApp: badgesState.daysWithApp,
     subjectsAbove15: subjectsAbove15,
     subjectsAbove18: subjectsAbove18,
@@ -127,6 +183,7 @@ final badgeContextProvider = Provider<BadgeContext>((ref) {
     gradesAbove18: gradesAbove18,
     perfectGrades: perfectGrades,
     subjectAverages: subjectAverages,
+    improvement30Days: improvement30Days,
   );
 });
 
@@ -164,18 +221,22 @@ class BadgesNotifier extends StateNotifier<BadgesState> {
     int consecutive = 0;
     int maxConsecutive = 0;
 
-    // Trier par date
+    // Trier par date (dates nulles repoussées à la fin)
     final sortedGrades = List.from(grades)
       ..sort((a, b) {
         final dateA = a.dateTime;
         final dateB = b.dateTime;
-        if (dateA == null || dateB == null) return 0;
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
         return dateA.compareTo(dateB);
       });
 
     for (final grade in sortedGrades) {
+      if (grade.dateTime == null) break; // dates nulles à la fin, on s'arrête
       final val = grade.valeurSur20;
-      if (val != null && val >= 12) {
+      if (val == null) continue; // Abs/Disp/NE ignorés
+      if (val >= 12) {
         consecutive++;
         if (consecutive > maxConsecutive) {
           maxConsecutive = consecutive;
@@ -275,6 +336,7 @@ class BadgesNotifier extends StateNotifier<BadgesState> {
     if (state.isLoading) return;
 
     final context = _ref.read(badgeContextProvider);
+    debugPrint('[BADGES] Check — totalGrades=${context.totalGrades} consecutive=${context.consecutiveGoodGrades} avg=${context.generalAverage} improvement=${context.improvement30Days}');
     final newlyUnlocked = <String>[];
 
     for (final badge in BadgeDefinitions.all) {
