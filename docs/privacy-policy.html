@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Politique de confidentialité — Bahut</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 24px;
+      color: #1a1a1a;
+      line-height: 1.7;
+    }
+    h1 { font-size: 1.8rem; margin-bottom: 4px; }
+    h2 { font-size: 1.1rem; margin-top: 32px; color: #111; }
+    p, li { color: #333; }
+    ul { padding-left: 20px; }
+    .meta { color: #888; font-size: 0.9rem; margin-bottom: 40px; }
+    .badge {
+      display: inline-block;
+      background: #f0f4ff;
+      color: #3355cc;
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    hr { border: none; border-top: 1px solid #eee; margin: 40px 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Politique de confidentialité</h1>
+  <p class="meta">Application <strong>Bahut</strong> &mdash; Dernière mise à jour : mars 2026</p>
+
+  <p>
+    Bahut est une application mobile qui vous permet de consulter vos données scolaires
+    (notes, emploi du temps, devoirs) depuis la plateforme École Directe.
+    Cette politique explique quelles données sont utilisées et comment elles sont protégées.
+  </p>
+
+  <h2>1. Données collectées</h2>
+  <p>Bahut utilise uniquement les données strictement nécessaires à son fonctionnement :</p>
+  <ul>
+    <li>
+      <strong>Identifiants École Directe</strong> — votre nom d'utilisateur et mot de passe
+      sont stockés de manière chiffrée sur votre appareil, via le système de stockage sécurisé
+      d'Android (<em>EncryptedSharedPreferences</em>). Ils ne transitent que vers les serveurs
+      d'École Directe et ne sont jamais envoyés ailleurs.
+    </li>
+    <li>
+      <strong>Données scolaires</strong> — notes, emploi du temps, devoirs et vie scolaire
+      sont récupérés depuis l'API École Directe et mis en cache localement sur votre appareil.
+    </li>
+    <li>
+      <strong>Calendrier</strong> (optionnel) — si vous activez la synchronisation, l'application
+      accède à votre calendrier Android pour y ajouter vos cours. Cette fonctionnalité est
+      entièrement optionnelle et peut être désactivée à tout moment dans les paramètres.
+    </li>
+  </ul>
+
+  <h2>2. Données non collectées</h2>
+  <p>
+    Bahut <strong>ne possède aucun serveur backend</strong>. Aucune donnée personnelle n'est
+    collectée, stockée ou transmise vers des serveurs tiers. Aucune donnée n'est utilisée
+    à des fins publicitaires ou analytiques.
+  </p>
+
+  <h2>3. Partage des données</h2>
+  <p>
+    Aucune donnée personnelle n'est partagée avec des tiers. L'application communique
+    uniquement avec l'API officielle d'École Directe (<code>api.ecoledirecte.com</code>)
+    pour récupérer vos informations scolaires.
+  </p>
+
+  <h2>4. Sécurité</h2>
+  <ul>
+    <li>Les identifiants sont chiffrés au repos via le stockage sécurisé d'Android.</li>
+    <li>Les communications avec École Directe se font en HTTPS (chiffrement en transit).</li>
+    <li>L'accès à l'application peut être protégé par authentification biométrique
+        (empreinte digitale ou reconnaissance faciale).</li>
+  </ul>
+
+  <h2>5. Suppression des données</h2>
+  <p>
+    Toutes les données stockées localement (identifiants, cache) sont supprimées lors
+    de la déconnexion ou de la désinstallation de l'application.
+  </p>
+
+  <h2>6. Mineurs</h2>
+  <p>
+    Bahut est destiné aux élèves de l'enseignement secondaire et supérieur. L'application
+    ne collecte aucune donnée personnelle au-delà des identifiants nécessaires à la
+    connexion à École Directe.
+  </p>
+
+  <hr>
+
+  <h2>Contact</h2>
+  <p>
+    Pour toute question concernant cette politique de confidentialité, vous pouvez
+    contacter le développeur via la page GitHub du projet :
+    <a href="https://github.com/menur4/bahut">github.com/menur4/bahut</a>.
+  </p>
+
+  <p class="meta">
+    Bahut n'est pas affilié à Aplim, éditeur d'École Directe.
+  </p>
+
+</body>
+</html>
