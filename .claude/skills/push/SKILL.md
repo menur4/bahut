@@ -61,10 +61,21 @@ gh release create vX.Y.Z \
   --latest
 ```
 
-Si le fichier `build/app/outputs/bundle/release/app-release.aab` existe et date de moins d'1 heure, demande à l'utilisateur s'il veut l'attacher à la release :
+Si les fichiers de build existent et datent de moins d'1 heure, attache-les à la release sans demander :
 ```bash
+# AAB (Play Store)
 gh release upload vX.Y.Z build/app/outputs/bundle/release/app-release.aab
+
+# APK (installation directe)
+gh release upload vX.Y.Z build/app/outputs/flutter-apk/app-release.apk
 ```
+
+Si l'APK release n'existe pas ou est trop vieux, build-le d'abord :
+```bash
+flutter build apk --release
+```
+
+Indique la taille de chaque fichier attaché.
 
 ### 4d. Afficher le lien de la release
 
