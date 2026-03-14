@@ -9,6 +9,8 @@ import '../../../grades/presentation/providers/grades_provider.dart';
 import '../../../statistics/presentation/providers/goals_provider.dart';
 import '../../../statistics/presentation/providers/statistics_provider.dart';
 import '../../domain/models/badge_model.dart';
+import '../../domain/services/badge_context_calculator.dart';
+import '../../domain/services/streak_calculator.dart';
 
 const _unlockedBadgesKey = 'unlocked_badges';
 const _badgeStatsKey = 'badge_stats';
@@ -74,122 +76,43 @@ final badgeContextProvider = Provider<BadgeContext>((ref) {
   final goalsState = ref.watch(goalsProvider);
   final badgesState = ref.watch(badgesProvider);
 
-  // Calculer les notes au-dessus de 15 et 18
-  int gradesAbove15 = 0;
-  int gradesAbove18 = 0;
-  int perfectGrades = 0;
-
-  for (final grade in gradesState.grades) {
-    final val = grade.valeurSur20;
-    if (val != null) {
-      if (val >= 15) gradesAbove15++;
-      if (val >= 18) gradesAbove18++;
-      if (val >= 20) perfectGrades++;
-    }
-  }
-
-  // Calculer les matières au-dessus de 15 et 18
+  // Matières
   int subjectsAbove15 = 0;
   int subjectsAbove18 = 0;
   final subjectAverages = <String, double>{};
-
   for (final subject in stats.subjectStats) {
     subjectAverages[subject.subjectCode] = subject.average;
     if (subject.average >= 15) subjectsAbove15++;
     if (subject.average >= 18) subjectsAbove18++;
   }
 
-  // Vérifier si l'objectif est atteint
+  // Objectif
   bool hasReachedGoal = false;
   if (goalsState.generalGoal != null && stats.generalAverage > 0) {
     hasReachedGoal = stats.generalAverage >= goalsState.generalGoal!.targetAverage;
   }
 
-  // Trouver la meilleure note
-  double? bestGrade;
-  for (final grade in gradesState.grades) {
-    final val = grade.valeurSur20;
-    if (val != null && (bestGrade == null || val > bestGrade)) {
-      bestGrade = val;
-    }
-  }
-
-  // Calculer l'amélioration de moyenne sur les 30 derniers jours
-  // Comparer moyenne(notes des 30 derniers jours) vs moyenne(notes des 30-60 jours passés)
-  double? improvement30Days;
-  final now = DateTime.now();
-  final thirtyDaysAgo = now.subtract(const Duration(days: 30));
-  final sixtyDaysAgo = now.subtract(const Duration(days: 60));
-
-  final recentGrades = <double>[];
-  final olderGrades = <double>[];
-
-  for (final grade in gradesState.grades) {
-    final val = grade.valeurSur20;
-    final date = grade.dateTime;
-    if (val == null || date == null) continue;
-
-    if (date.isAfter(thirtyDaysAgo)) {
-      recentGrades.add(val);
-    } else if (date.isAfter(sixtyDaysAgo)) {
-      olderGrades.add(val);
-    }
-  }
-
-  if (recentGrades.isNotEmpty && olderGrades.isNotEmpty) {
-    final recentAvg = recentGrades.reduce((a, b) => a + b) / recentGrades.length;
-    final olderAvg = olderGrades.reduce((a, b) => a + b) / olderGrades.length;
-    improvement30Days = recentAvg - olderAvg;
-  }
-
-  // Calculer les notes consécutives >= 12 directement depuis les notes (toujours à jour)
-  int consecutiveGoodGrades = 0;
-  {
-    int consecutive = 0;
-    int maxConsecutive = 0;
-    final sortedGrades = List.from(gradesState.grades)
-      ..sort((a, b) {
-        final dateA = a.dateTime;
-        final dateB = b.dateTime;
-        if (dateA == null && dateB == null) return 0;
-        if (dateA == null) return 1;  // dates nulles à la fin
-        if (dateB == null) return -1;
-        return dateA.compareTo(dateB);
-      });
-    for (final grade in sortedGrades) {
-      if (grade.dateTime == null) break; // dates nulles à la fin, on s'arrête
-      final val = grade.valeurSur20;
-      if (val == null) continue; // Abs/Disp/NE ignorés
-      if (val >= 12) {
-        consecutive++;
-        if (consecutive > maxConsecutive) maxConsecutive = consecutive;
-      } else {
-        consecutive = 0;
-      }
-    }
-    consecutiveGoodGrades = maxConsecutive;
-  }
-
   return BadgeContext(
-    totalGrades: gradesState.grades.length,
+    totalGrades: countValidGrades(gradesState.grades),
     generalAverage: stats.generalAverage > 0 ? stats.generalAverage : null,
-    consecutiveGoodGrades: consecutiveGoodGrades,
+    consecutiveGoodGrades: calculateMaxStreak(gradesState.grades),
     daysWithApp: badgesState.daysWithApp,
     subjectsAbove15: subjectsAbove15,
     subjectsAbove18: subjectsAbove18,
-    bestGrade: bestGrade,
+    bestGrade: calculateBestGrade(gradesState.grades),
     hasReachedGoal: hasReachedGoal,
-    gradesAbove15: gradesAbove15,
-    gradesAbove18: gradesAbove18,
-    perfectGrades: perfectGrades,
+    gradesAbove15: countGradesAbove(gradesState.grades, 15),
+    gradesAbove18: countGradesAbove(gradesState.grades, 18),
+    perfectGrades: countGradesAbove(gradesState.grades, 20),
     subjectAverages: subjectAverages,
-    improvement30Days: improvement30Days,
+    improvement30Days: calculateImprovement30Days(gradesState.grades, DateTime.now()),
   );
 });
 
 /// Notifier pour gérer les badges
 class BadgesNotifier extends StateNotifier<BadgesState> {
   final Ref _ref;
+  bool _badgesInitialized = false;
 
   BadgesNotifier(this._ref) : super(const BadgesState()) {
     _loadBadges();
@@ -205,9 +128,12 @@ class BadgesNotifier extends StateNotifier<BadgesState> {
       }
     });
 
-    // Écouter les changements de stats
+    // Écouter les changements de stats (seulement si la moyenne change)
     _ref.listen(globalStatsProvider, (previous, next) {
-      checkAndUnlockBadges();
+      if (previous?.generalAverage != next.generalAverage ||
+          previous?.totalGrades != next.totalGrades) {
+        checkAndUnlockBadges();
+      }
     });
 
     // Écouter les changements d'objectifs
@@ -216,36 +142,8 @@ class BadgesNotifier extends StateNotifier<BadgesState> {
     });
   }
 
-  void _updateConsecutiveGrades(List<dynamic> grades) {
-    // Calculer les notes consécutives au-dessus de 12
-    int consecutive = 0;
-    int maxConsecutive = 0;
-
-    // Trier par date (dates nulles repoussées à la fin)
-    final sortedGrades = List.from(grades)
-      ..sort((a, b) {
-        final dateA = a.dateTime;
-        final dateB = b.dateTime;
-        if (dateA == null && dateB == null) return 0;
-        if (dateA == null) return 1;
-        if (dateB == null) return -1;
-        return dateA.compareTo(dateB);
-      });
-
-    for (final grade in sortedGrades) {
-      if (grade.dateTime == null) break; // dates nulles à la fin, on s'arrête
-      final val = grade.valeurSur20;
-      if (val == null) continue; // Abs/Disp/NE ignorés
-      if (val >= 12) {
-        consecutive++;
-        if (consecutive > maxConsecutive) {
-          maxConsecutive = consecutive;
-        }
-      } else {
-        consecutive = 0;
-      }
-    }
-
+  void _updateConsecutiveGrades(List<GradeModel> grades) {
+    final maxConsecutive = calculateMaxStreak(grades);
     if (maxConsecutive != state.consecutiveGoodGrades) {
       state = state.copyWith(consecutiveGoodGrades: maxConsecutive);
       _saveStats();
@@ -297,10 +195,12 @@ class BadgesNotifier extends StateNotifier<BadgesState> {
 
       await _saveStats();
 
-      // Vérifier les nouveaux badges
+      // Vérifier les nouveaux badges une fois que tout est chargé
+      _badgesInitialized = true;
       checkAndUnlockBadges();
     } catch (e) {
       debugPrint('[BADGES] Erreur chargement: $e');
+      _badgesInitialized = true;
       state = state.copyWith(isLoading: false);
     }
   }
@@ -333,10 +233,9 @@ class BadgesNotifier extends StateNotifier<BadgesState> {
 
   /// Vérifie et débloque les nouveaux badges
   void checkAndUnlockBadges() {
-    if (state.isLoading) return;
+    if (!_badgesInitialized || state.isLoading) return;
 
     final context = _ref.read(badgeContextProvider);
-    debugPrint('[BADGES] Check — totalGrades=${context.totalGrades} consecutive=${context.consecutiveGoodGrades} avg=${context.generalAverage} improvement=${context.improvement30Days}');
     final newlyUnlocked = <String>[];
 
     for (final badge in BadgeDefinitions.all) {

@@ -1,7 +1,7 @@
 name: calcul_moyenne
 description: "Application de visualisation des notes scolaires via École Directe"
 publish_to: 'none'
-version: 1.3.0+8
+version: 1.4.0+9
 
 environment:
   sdk: ^3.10.7
@@ -89,11 +89,12 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icone.png
+    - assets/IconeBahut-512.png
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icone.png"
+  image_path: "assets/IconeBahut-512.png"
   min_sdk_android: 21
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icone.png"
+  adaptive_icon_foreground: "assets/IconeBahut-512.png"

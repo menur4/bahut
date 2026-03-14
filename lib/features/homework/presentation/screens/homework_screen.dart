@@ -11,6 +11,20 @@ import '../../../../shared/widgets/skeleton_widgets.dart';
 import '../../data/models/homework_model.dart';
 import '../providers/homework_provider.dart';
 
+void _showDetail(BuildContext context, HomeworkModel homework, AppColorPalette palette, WidgetRef ref) {
+  final contentFuture = ref.read(homeworkStateProvider.notifier).fetchHomeworkContent(homework);
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _HomeworkDetailSheet(
+      homework: homework,
+      palette: palette,
+      contentFuture: contentFuture,
+    ),
+  );
+}
+
 /// Écran des devoirs / cahier de texte
 class HomeworkScreen extends ConsumerStatefulWidget {
   const HomeworkScreen({super.key});
@@ -194,7 +208,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
   }
 }
 
-class _DateSection extends StatelessWidget {
+class _DateSection extends ConsumerWidget {
   final String dateStr;
   final List<HomeworkModel> homeworks;
   final AppColorPalette palette;
@@ -240,7 +254,7 @@ class _DateSection extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isOverdue = _isOverdue(dateStr);
 
     return Column(
@@ -285,6 +299,7 @@ class _DateSection extends StatelessWidget {
         ...homeworks.map((homework) => _HomeworkCard(
           homework: homework,
           palette: palette,
+          onTap: () => _showDetail(context, homework, palette, ref),
         )),
         const SizedBox(height: ChanelTheme.spacing3),
       ],
@@ -295,10 +310,12 @@ class _DateSection extends StatelessWidget {
 class _HomeworkCard extends StatelessWidget {
   final HomeworkModel homework;
   final AppColorPalette palette;
+  final VoidCallback onTap;
 
   const _HomeworkCard({
     required this.homework,
     required this.palette,
+    required this.onTap,
   });
 
   Color _getMatiereColor(String? matiere) {
@@ -326,7 +343,10 @@ class _HomeworkCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _getMatiereColor(homework.matiere);
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
       margin: const EdgeInsets.only(bottom: ChanelTheme.spacing2),
       decoration: BoxDecoration(
         color: palette.backgroundCard,
@@ -458,6 +478,291 @@ class _HomeworkCard extends StatelessWidget {
                 ],
               ),
             ),
+        ],
+      ),
+    ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom sheet de détail d'un devoir
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HomeworkDetailSheet extends StatelessWidget {
+  final HomeworkModel homework;
+  final AppColorPalette palette;
+  final Future<String> contentFuture;
+
+  const _HomeworkDetailSheet({
+    required this.homework,
+    required this.palette,
+    required this.contentFuture,
+  });
+
+  Color _getMatiereColor(String? matiere) {
+    if (matiere == null) return const Color(0xFF9E9E9E);
+    final m = matiere.toLowerCase();
+    if (m.contains('math')) return const Color(0xFF4CAF50);
+    if (m.contains('français') || m.contains('francais')) return const Color(0xFF2196F3);
+    if (m.contains('anglais')) return const Color(0xFFE91E63);
+    if (m.contains('histoire') || m.contains('géo')) return const Color(0xFFFF9800);
+    if (m.contains('physique') || m.contains('chimie')) return const Color(0xFF9C27B0);
+    if (m.contains('svt') || m.contains('bio')) return const Color(0xFF4CAF50);
+    if (m.contains('sport') || m.contains('eps')) return const Color(0xFFFF5722);
+    return const Color(0xFF9E9E9E);
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '—';
+    try {
+      final date = dateStr.contains('-')
+          ? DateTime.parse(dateStr)
+          : () {
+              final parts = dateStr.split('/');
+              return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+            }();
+      return DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(date);
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _getMatiereColor(homework.matiere);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      builder: (_, controller) => Container(
+        decoration: BoxDecoration(
+          color: palette.backgroundPrimary,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: palette.borderLight,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                children: [
+                  // En-tête matière
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              homework.matiere ?? 'Matière',
+                              style: ChanelTypography.titleMedium.copyWith(
+                                color: palette.textPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (homework.isInterrogation)
+                              Container(
+                                margin: const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: palette.warning.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+                                ),
+                                child: Text(
+                                  'Évaluation',
+                                  style: ChanelTypography.labelSmall.copyWith(color: palette.warning),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (homework.effectue)
+                        Icon(Icons.check_circle, color: palette.success, size: 28),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Dates
+                  _InfoRow(
+                    icon: Icons.calendar_today_outlined,
+                    label: 'Donné le',
+                    value: _formatDate(homework.donneLe),
+                    palette: palette,
+                  ),
+                  const SizedBox(height: 10),
+                  _InfoRow(
+                    icon: Icons.event_outlined,
+                    label: 'Pour le',
+                    value: _formatDate(homework.pourLe),
+                    palette: palette,
+                    highlight: true,
+                  ),
+
+                  // Contenu (chargé via API)
+                  const SizedBox(height: 20),
+                  FutureBuilder<String>(
+                    future: contentFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return Center(child: CircularProgressIndicator(color: palette.primary));
+                      }
+                      final contenu = snapshot.data ?? '';
+                      if (contenu.isEmpty) {
+                        return Text(
+                          'Aucun détail disponible',
+                          style: ChanelTypography.bodyMedium.copyWith(
+                            color: palette.textMuted,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'TRAVAIL À FAIRE',
+                            style: ChanelTypography.labelMedium.copyWith(
+                              color: palette.textTertiary,
+                              letterSpacing: ChanelTypography.letterSpacingWider,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            contenu,
+                            style: ChanelTypography.bodyMedium.copyWith(
+                              color: palette.textPrimary,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+
+                  // Badges d'information
+                  if (homework.rendpieces || homework.documentsAFaire) ...[
+                    const SizedBox(height: 20),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        if (homework.rendpieces)
+                          _Badge(
+                            icon: Icons.upload_file_outlined,
+                            label: 'Travail à rendre',
+                            color: palette.warning,
+                            palette: palette,
+                          ),
+                        if (homework.documentsAFaire)
+                          _Badge(
+                            icon: Icons.attach_file,
+                            label: 'Documents à faire',
+                            color: palette.primary,
+                            palette: palette,
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final AppColorPalette palette;
+  final bool highlight;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.palette,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: highlight ? palette.primary : palette.textMuted),
+        const SizedBox(width: 10),
+        Text(
+          '$label : ',
+          style: ChanelTypography.bodyMedium.copyWith(color: palette.textSecondary),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: ChanelTypography.bodyMedium.copyWith(
+              color: highlight ? palette.primary : palette.textPrimary,
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final AppColorPalette palette;
+
+  const _Badge({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(ChanelTheme.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: ChanelTypography.labelSmall.copyWith(color: color),
+          ),
         ],
       ),
     );

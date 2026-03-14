@@ -1,5 +1,18 @@
 # Changelog — Bahut
 
+## [1.4.0] — 2026-03-14
+
+### Nouveautés
+- ✨ Détail des devoirs : tap sur un devoir pour voir son contenu complet (récupéré depuis l'API École Directe)
+- 🎨 Nouvelle icône de l'application
+
+### Corrections
+- 🐛 Badge "Progression" ne se déclenche plus à chaque connexion (correction de la condition de timing)
+- 🐛 Badge "Progression" fonctionne désormais de façon rétroactive (ancrage sur la date de la dernière note reçue)
+- 🐛 Badges de régularité (streak) débloqués correctement même avec des notes sans date d'examen
+
+---
+
 ## [1.3.0] — 2026-03-14
 
 ### Nouveautés

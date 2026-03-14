@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs basename:*)",
+      "Bash(git -C /Users/frhamon/Code/calcul_moyenne log --oneline)",
+      "Bash(xargs cat:*)",
+      "Bash(find /Users/frhamon/Code/calcul_moyenne -type f \\\\\\(-iname *changelog* -o -iname *release* -o -iname *news* -o -iname *notes* \\\\\\))",
+      "Bash(find /Users/frhamon/Code/calcul_moyenne -maxdepth 2 -type f \\\\\\(-iname README* -o -iname *.md \\\\\\))",
+      "Bash(adb -s 1bc65eb1 install -r build/app/outputs/flutter-apk/app-debug.apk)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 1bc65eb1 install -r build/app/outputs/flutter-apk/app-debug.apk)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 1bc65eb1 install -r build/app/outputs/flutter-apk/app-release.apk)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 1bc65eb1 logcat -d -s flutter)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 1bc65eb1 logcat -d)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 1bc65eb1 logcat -d -t 50)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 1bc65eb1 logcat -c)",
+      "Bash(git -C /Users/frhamon/Code/calcul_moyenne status --short)",
+      "Bash(git -C /Users/frhamon/Code/calcul_moyenne diff --stat)",
+      "Read(//Users/frhamon/Code/calcul_moyenne/**)",
+      "Bash(gh release:*)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/frhamon/Code/calcul_moyenne/web/icons/Icon-512.png)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/frhamon/Code/calcul_moyenne/assets/icone.png)",
+      "Bash(sips -g pixelWidth -g pixelHeight \"/Users/frhamon/Code/calcul_moyenne/assets/icone - GPT.png\")",
+      "Bash(sips -z 512 512 \"/Users/frhamon/Code/calcul_moyenne/assets/icone - GPT.png\" --out \"/Users/frhamon/Code/calcul_moyenne/assets/icone-512.png\")",
+      "Bash(convert --version)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/frhamon/Code/calcul_moyenne/assets/feature-graphic.png)",
+      "WebSearch",
+      "Bash(claude mcp:*)",
+      "WebFetch(domain:www.canva.dev)",
+      "Read(//Users/frhamon/**)",
+      "Bash(npx -y @canva/cli@latest mcp --help)",
+      "Bash(npx -y @canva/cli@latest --help)",
+      "Bash(npx @canva/cli@latest login)",
+      "Bash(flutter test:*)"
+    ]
+  }
+}

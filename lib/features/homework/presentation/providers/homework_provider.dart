@@ -119,6 +119,20 @@ class HomeworkNotifier extends StateNotifier<HomeworkState> {
     }
   }
 
+  /// Supprimer les balises HTML et normaliser les espaces
+  String _stripHtml(String content) {
+    return content
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   /// Décoder le contenu base64
   String _decodeBase64Content(String? content) {
     if (content == null || content.isEmpty) return '';
@@ -196,15 +210,16 @@ class HomeworkNotifier extends StateNotifier<HomeworkState> {
           for (final homeworkData in dayData) {
             if (homeworkData is Map<String, dynamic>) {
               final homework = HomeworkModel(
-                idDevoir: homeworkData['idDevoir'] as int?,
+                idDevoir: (homeworkData['idDevoir'] ?? homeworkData['id']) as int?,
                 matiere: homeworkData['matiere'] as String?,
                 codeMatiere: homeworkData['codeMatiere'] as String?,
-                aFaire: homeworkData['aFaire'] as bool? ?? false,
+                aFaire: homeworkData['aFaire'] == true,
                 donneLe: homeworkData['donneLe'] as String?,
                 pourLe: dateStr,
                 effectue: homeworkData['effectue'] as bool? ?? false,
                 interrogation: homeworkData['interrogation'] == true ? 'true' : null,
                 documentsAFaire: homeworkData['documentsAFaire'] as bool? ?? false,
+                rendpieces: homeworkData['rendpieces'] as bool? ?? false,
               );
               dayHomeworks.add(homework);
               allHomeworks.add(homework);
@@ -245,6 +260,49 @@ class HomeworkNotifier extends StateNotifier<HomeworkState> {
         errorMessage: errorMsg,
       );
     }
+  }
+
+  /// Récupère le contenu d'un devoir via l'endpoint par date
+  Future<String> fetchHomeworkContent(HomeworkModel homework) async {
+    final authState = _ref.read(authStateProvider);
+    final selectedChild = authState.selectedChild;
+    if (selectedChild == null || homework.pourLe == null) return '';
+
+    try {
+      final apiClient = _ref.read(apiClientProvider);
+      final baseUrl = ApiConstants.cahierDeTexteEndpoint(selectedChild.id)
+          .replaceAll('.awp', '');
+      final endpoint = '$baseUrl/${homework.pourLe}.awp';
+
+      final response = await apiClient.post(
+        endpoint,
+        data: {},
+        queryParameters: {'verbe': 'get', 'v': ApiConstants.apiVersionNumber},
+      );
+
+      if (response['code'] != 200) return '';
+
+      final data = response['data'];
+      if (data is! Map<String, dynamic>) return '';
+
+      final matieres = data['matieres'];
+      if (matieres is! List) return '';
+
+      for (final matiere in matieres) {
+        if (matiere is! Map<String, dynamic>) continue;
+        final aFaire = matiere['aFaire'];
+        if (aFaire is! Map<String, dynamic>) continue;
+        if (aFaire['idDevoir'] != homework.idDevoir) continue;
+
+        final raw = aFaire['contenu'];
+        final contenu = _stripHtml(_decodeBase64Content(raw is String ? raw : null));
+        debugPrint('[HOMEWORK] Contenu récupéré (${contenu.length} chars)');
+        return contenu;
+      }
+    } catch (e) {
+      debugPrint('[HOMEWORK] Erreur fetchHomeworkContent: $e');
+    }
+    return '';
   }
 
   /// Vider le cache

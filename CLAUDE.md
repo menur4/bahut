@@ -5,7 +5,7 @@
 **Bahut** is a Flutter mobile app that connects to the **École Directe** API (French education platform) to let students visualize their grades, schedule, homework, and school behavior.
 
 - **Package:** `com.frhamon.calcul_moyenne`
-- **Version:** 1.2.2+7
+- **Version:** 1.4.0+9
 - **Platforms:** iOS 14+, Android SDK 21+, Web, macOS, Linux, Windows
 - **Language:** French throughout (UI strings, comments, commit messages)
 - **Dart SDK:** ^3.10.7
@@ -181,8 +181,9 @@ Minimal coverage. Only `test/widget_test.dart` exists. `mocktail` is available f
 
 ---
 
-## Recent History (as of v1.3.0)
+## Recent History (as of v1.4.0)
 
+- v1.4.0 — Détail des devoirs, nouvelle icône, fix badge Progression, badges rétroactifs
 - v1.3.0 — Carte moyenne swipeable, bannière nouveau trimestre, fix tri notes, fix badges streak
 - v1.2.2 — Multi-accounts, badges, router fixes
 - v1.2.1 — Notification fixes, notification test button
