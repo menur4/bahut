@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -28,20 +29,25 @@ class ApiClient {
   ApiClient() {
     _dio = Dio(
       BaseOptions(
-        baseUrl: ApiConstants.baseUrl,
+        // Sur web, passer par le proxy CORS Cloudflare Worker
+        baseUrl: kIsWeb ? ApiConstants.webProxyUrl : ApiConstants.baseUrl,
         connectTimeout: const Duration(milliseconds: ApiConstants.connectTimeout),
         receiveTimeout: const Duration(milliseconds: ApiConstants.receiveTimeout),
         headers: {
           'User-Agent': ApiConstants.userAgent,
           'Accept': 'application/json, text/plain, */*',
-          'Origin': 'https://www.ecoledirecte.com',
-          'Referer': 'https://www.ecoledirecte.com/',
+          // Sur web, Origin/Referer sont gérés par le Worker
+          if (!kIsWeb) 'Origin': 'https://www.ecoledirecte.com',
+          if (!kIsWeb) 'Referer': 'https://www.ecoledirecte.com/',
         },
       ),
     );
 
-    // Ajouter le gestionnaire de cookies
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    // CookieManager : le navigateur bloque le header Cookie cross-origin,
+    // donc inutile sur web (le Worker gère la conversion X-Gtk → Cookie)
+    if (!kIsWeb) {
+      _dio.interceptors.add(CookieManager(_cookieJar));
+    }
 
     // Interceptor pour ajouter les headers
     _dio.interceptors.add(
@@ -84,10 +90,28 @@ class ApiClient {
   Future<void> fetchGtk() async {
     print('[API] Fetching GTK cookie...');
 
-    // Effacer l'ancien GTK pour forcer une nouvelle récupération
     _gtkValue = null;
 
-    // Supprimer les anciens cookies GTK
+    if (kIsWeb) {
+      // Sur web : le proxy extrait GTK du Set-Cookie et l'expose en X-Gtk-Value
+      final response = await _dio.get(
+        ApiConstants.loginEndpoint,
+        queryParameters: {
+          'gtk': '1',
+          'v': ApiConstants.apiVersionNumber,
+        },
+        options: Options(headers: {'X-Gtk': null}),
+      );
+
+      _gtkValue = response.headers.value('x-gtk-value');
+      if (_gtkValue != null && _gtkValue!.isNotEmpty) {
+        print('[API] GTK (web proxy): ${_gtkValue!.substring(0, 10)}...');
+        return;
+      }
+      throw const ServerException(message: 'Impossible d\'obtenir le cookie GTK via le proxy');
+    }
+
+    // Flux natif : lecture depuis le CookieJar
     final baseUri = Uri.parse(ApiConstants.baseUrl);
     await _cookieJar.delete(baseUri, true);
 
@@ -97,16 +121,10 @@ class ApiClient {
         'gtk': '1',
         'v': ApiConstants.apiVersionNumber,
       },
-      options: Options(
-        // Ne pas envoyer l'ancien X-Gtk
-        headers: {'X-Gtk': null},
-      ),
+      options: Options(headers: {'X-Gtk': null}),
     );
 
-    // Essayer plusieurs emplacements pour le cookie GTK
     final loginUri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.loginEndpoint}');
-
-    // Chercher dans les cookies pour différentes URLs
     for (final uri in [loginUri, baseUri]) {
       final cookies = await _cookieJar.loadForRequest(uri);
       for (final cookie in cookies) {
@@ -118,7 +136,6 @@ class ApiClient {
       }
     }
 
-    // Si pas trouvé dans les cookies, vérifier les headers de réponse
     final setCookie = response.headers['set-cookie'];
     if (setCookie != null) {
       for (final cookie in setCookie) {

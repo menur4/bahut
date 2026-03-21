@@ -1,0 +1,6 @@
+name = "bahut-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Déployer avec : npx wrangler deploy
+# URL résultante : https://bahut-proxy.<ton-sous-domaine>.workers.dev

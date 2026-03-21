@@ -2,8 +2,12 @@
 class ApiConstants {
   ApiConstants._();
 
-  /// URL de base de l'API École Directe
+  /// URL de base de l'API École Directe (native)
   static const String baseUrl = 'https://api.ecoledirecte.com';
+
+  /// URL du proxy CORS Cloudflare Worker (web uniquement)
+  /// Déployé via workers/cors-proxy/ — voir wrangler.toml
+  static const String webProxyUrl = 'https://bahut-proxy.frhamon.workers.dev';
 
   /// Version de l'API
   static const String apiVersion = 'v3';
@@ -23,6 +27,8 @@ class ApiConstants {
       '/$apiVersion/E/$studentId/emploidutemps.awp';
   static String cahierDeTexteEndpoint(int studentId) =>
       '/$apiVersion/Eleves/$studentId/cahierdetexte.awp';
+  static String cahierDeTexteDetailEndpoint(int studentId, int idDevoir) =>
+      '/$apiVersion/Eleves/$studentId/cahierdetexte/$idDevoir.awp';
   static String travailAFaireEndpoint(int studentId) =>
       '/$apiVersion/Eleves/$studentId/cahierdetexte.awp';
   static String messagesEndpoint(int studentId) =>
